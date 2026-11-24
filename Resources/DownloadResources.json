@@ -1,0 +1,26 @@
+[
+  {
+    "id": "sdk17",
+    "title": "iOS 17.0 SDK",
+    "file": "iPhoneOS17.0.sdk.tar.gz",
+    "bytes": 45935486,
+    "sha256": "3156677a160f9f1c5d72fb8c968ef696a714bbda7b0cb908d97d791bd854b7b1",
+    "url": "https://github.com/JiuJiuyu77/Workbench-Runtime/releases/download/runtime-v3/iPhoneOS17.0.sdk.tar.gz"
+  },
+  {
+    "id": "sdk26",
+    "title": "iOS 26.5 SDK",
+    "file": "iPhoneOS26.5.sdk.tar.gz",
+    "bytes": 35017300,
+    "sha256": "576446dd3b8c4d7ff3507613203455a4bc066cc7db9b6af59ec2e9b655e65bf2",
+    "url": "https://github.com/JiuJiuyu77/Workbench-Runtime/releases/download/runtime-v3/iPhoneOS26.5.sdk.tar.gz"
+  },
+  {
+    "id": "theos-toolchain",
+    "title": "Theos 工具链",
+    "file": "SparkTheosRuntimeV3.tar.gz",
+    "bytes": 272221041,
+    "sha256": "5e26dbe33a23165131be37ac9c77ea4cf0bcbbcb1411ca054bc255a7d6fd1c7c",
+    "url": "https://github.com/JiuJiuyu77/Workbench-Runtime/releases/download/runtime-v3/SparkTheosRuntimeV3.tar.gz"
+  }
+]

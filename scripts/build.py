@@ -6,6 +6,7 @@ import pathlib
 import plistlib
 import shutil
 import subprocess
+import tarfile
 import zipfile
 import hashlib
 import gzip
@@ -71,8 +72,24 @@ commands = {name: [f'{framework}.framework/{framework}', 'main', '', 'no']
 # SDK archives are inert linker inputs, not code to sign. ldid mistakes a fat
 # static archive for a fat executable and aborts with "Unknown header magic".
 # Keep the complete SDK losslessly compressed, and materialize it in app caches.
+# 内置 SDK 以 tar.gz 形式随仓库分发（解压后约 235MB，压缩后 30MB），
+# 构建时先解压到 build/ 再走原有打包流程。
+_sdk_tar = ROOT / 'Resources/SDK16.5.tar.gz'
+_sdk_dir = ROOT / 'build' / 'SDK16.5'
+if _sdk_tar.exists():
+    _stamp = _sdk_dir / '.extracted'
+    if not _stamp.exists() or _stamp.stat().st_mtime < _sdk_tar.stat().st_mtime:
+        shutil.rmtree(_sdk_dir, ignore_errors=True)
+        _sdk_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(_sdk_tar, 'r:gz') as _tf:
+            _tf.extractall(_sdk_dir)
+        _stamp.write_bytes(b'ok')
+    _sdk_src = _sdk_dir / 'iPhoneOS16.5.sdk' if (_sdk_dir / 'iPhoneOS16.5.sdk').is_dir() else _sdk_dir
+else:
+    _sdk_src = ROOT / 'Resources/SDK'
+
 for sdk_version, sdk_root, sdk_stem in [
-    ('16.4', ROOT / 'Resources/SDK', 'SDK'),
+    ('16.5', _sdk_src, 'SDK'),
 ]:
     metadata = plistlib.loads((sdk_root / 'SDKSettings.plist').read_bytes())
     if metadata.get('Version') != sdk_version:
@@ -85,8 +102,8 @@ for sdk_version, sdk_root, sdk_stem in [
                 if path.is_file() and not any(part == '.DS_Store' or part == '__MACOSX' or part.startswith('._') for part in path.relative_to(sdk_root).parts):
                     archive.write(path, path.relative_to(sdk_root))
         sdk_temp.replace(sdk_cache)
-    # SDK26 is an optional, pinned download. Keep 16.4 usable offline.
-    if sdk_version == '16.4':
+    # SDK26 is an optional, pinned download. Keep 16.5 usable offline.
+    if sdk_version == '16.5':
         shutil.copyfile(sdk_cache, app / (sdk_stem + '.zip'))
     (app / (sdk_stem + 'Resource.plist')).write_bytes(plistlib.dumps({
         'version': sdk_version,
