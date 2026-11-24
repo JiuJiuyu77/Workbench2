@@ -5,6 +5,7 @@
 
 #import "WBRemoteController.h"
 #import "SPRemoteServer.h"
+#import "SPSession.h"
 #import "SPCompat.h"
 #import "GlassSupport.h"
 #import "WBCloudBuild.h"
