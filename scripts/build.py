@@ -88,12 +88,18 @@ if _sdk_tar.exists():
 else:
     _sdk_src = ROOT / 'Resources/SDK'
 
+# 目录名与元数据版本可能不一致（用户提供的包名为 16.5、元数据是 16.4），
+# 一律以 SDKSettings 里的 Version 为准，避免硬编码版本号导致构建中断。
+_embedded_version = None
 for sdk_version, sdk_root, sdk_stem in [
-    ('16.5', _sdk_src, 'SDK'),
+    (None, _sdk_src, 'SDK'),
 ]:
     metadata = plistlib.loads((sdk_root / 'SDKSettings.plist').read_bytes())
-    if metadata.get('Version') != sdk_version:
-        raise SystemExit('Embedded SDK metadata mismatch: ' + str(sdk_root))
+    _embedded_version = metadata.get('Version')
+    if not _embedded_version:
+        raise SystemExit('Embedded SDK metadata missing Version: ' + str(sdk_root))
+    sdk_version = _embedded_version
+    print('Embedded SDK: %s (metadata Version=%s)' % (sdk_root.name, sdk_version))
     sdk_cache = ROOT / 'build' / ('embedded-' + sdk_stem + '.zip')
     if not sdk_cache.exists() or sdk_cache.stat().st_mtime < max(p.stat().st_mtime for p in sdk_root.rglob('*') if p.is_file()):
         sdk_temp = sdk_cache.with_name(sdk_cache.name + '.' + str(os.getpid()) + '.tmp')
@@ -103,8 +109,7 @@ for sdk_version, sdk_root, sdk_stem in [
                     archive.write(path, path.relative_to(sdk_root))
         sdk_temp.replace(sdk_cache)
     # SDK26 is an optional, pinned download. Keep 16.5 usable offline.
-    if sdk_version == '16.5':
-        shutil.copyfile(sdk_cache, app / (sdk_stem + '.zip'))
+    shutil.copyfile(sdk_cache, app / (sdk_stem + '.zip'))
     (app / (sdk_stem + 'Resource.plist')).write_bytes(plistlib.dumps({
         'version': sdk_version,
         'sha256': hashlib.sha256(sdk_cache.read_bytes()).hexdigest(),
