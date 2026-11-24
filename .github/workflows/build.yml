@@ -98,6 +98,14 @@ jobs:
           echo "path=$SDK" >> "$GITHUB_OUTPUT"
           echo "使用 SDK: $SDK"
 
+      - name: 安装 Rust iOS 目标
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-apple-ios
+          rustup target list --installed
+          cargo --version
+          rustc --version
+
       - name: 构建
         id: build
         run: |
