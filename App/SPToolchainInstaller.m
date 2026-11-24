@@ -241,6 +241,11 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     // 不加入 PATH 就会报 "swiftc: command not found"。
     addDir(@"/var/jb/usr/local/bin");
     addDir(@"/var/jb/usr/bin");
+    // 按需下载的 Swift 工具链（SPComponentSwift）解在 installRoot/swift-toolchain，
+    // swiftc 与标准库都在这里；Theos 的 swift-support 靠 PATH 找 swiftc。
+    NSString *swiftRoot = [self.installRoot stringByAppendingPathComponent:@"swift-toolchain"];
+    addDir([swiftRoot stringByAppendingPathComponent:@"usr/bin"]);
+    addDir([swiftRoot stringByAppendingPathComponent:@"usr/lib/swift"]);
     [pathDirs addObject:@"/usr/local/bin"];
     [pathDirs addObject:@"/usr/bin"];
     [pathDirs addObject:@"/bin"];

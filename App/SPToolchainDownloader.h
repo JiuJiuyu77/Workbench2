@@ -22,6 +22,7 @@ typedef NS_ENUM(NSInteger, SPComponent) {
     SPComponentOLLVM,           // Arkari LLVM 23.1.1
     SPComponentSDK17,           // iPhoneOS17.0.sdk（按需下载）
     SPComponentSDK26,           // iPhoneOS26.5.sdk（按需下载）
+    SPComponentSwift,           // Swift 5.9.2 工具链（Procursus swiftc + 标准库）
     SPComponentCount,
 };
 

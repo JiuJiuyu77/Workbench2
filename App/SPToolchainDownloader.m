@@ -221,6 +221,29 @@ didFinishDownloadingToURL:(NSURL *)location {
         @"/usr/bin", @"/var/jb/usr/bin", @"/bin"]];
     BOOL ok = NO;
     BOOL isSDK = (self.currentComponent == SPComponentSDK17 || self.currentComponent == SPComponentSDK26);
+
+    // Swift 工具链以 .deb 分发（Procursus swift-5.9.2），tar 解不了，
+    // 必须用 dpkg-deb -x 展开成 usr/bin/swiftc + usr/lib/swift 的目录布局。
+    BOOL isDeb = [[location.path lowercaseString] hasSuffix:@".deb"];
+    if (isDeb) {
+        NSString *dpkg = [SPUtil findExecutable:@[@"dpkg-deb"] searchDirs:@[
+            [SPToolchainInstaller shared].binDir,
+            [SPToolchainInstaller shared].installRoot,
+            @"/var/jb/usr/bin", @"/usr/bin", @"/bin"]];
+        if (dpkg) {
+            if (self.progressBlock) dispatch_async(dispatch_get_main_queue(), ^{ self.progressBlock(0.95, @"解包 deb…"); });
+            NSString *cmd = [NSString stringWithFormat:@"%@ -x %@ %@",
+                             [SPUtil shellQuote:dpkg],
+                             [SPUtil shellQuote:location.path],
+                             [SPUtil shellQuote:dir]];
+            SPCommandResult *r = [SPSession runSyncShell:cmd environment:@{} cwd:NSTemporaryDirectory() timeout:900];
+            ok = (r.exitCode == 0);
+            SPLog(@"Swift 工具链解包%@（exit=%d）", ok ? @"成功" : @"失败", (int)r.exitCode);
+        } else {
+            SPLog(@"[!] 找不到 dpkg-deb，无法展开 Swift 工具链 .deb");
+        }
+        tar = nil;   // 跳过下面的 tar 分支
+    }
     if (tar) {
         if (self.progressBlock) dispatch_async(dispatch_get_main_queue(), ^{ self.progressBlock(0.95, @"解包…"); });
         NSString *cmd = [NSString stringWithFormat:

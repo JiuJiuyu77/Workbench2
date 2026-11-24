@@ -22,5 +22,13 @@
     "bytes": 272221041,
     "sha256": "5e26dbe33a23165131be37ac9c77ea4cf0bcbbcb1411ca054bc255a7d6fd1c7c",
     "url": "https://github.com/JiuJiuyu77/Workbench-Runtime/releases/download/runtime-v3/SparkTheosRuntimeV3.tar.gz"
+  },
+  {
+    "id": "swift-toolchain",
+    "title": "Swift 5.9.2 工具链",
+    "file": "swift-5.9.2_5.9.2.RELEASE_darwin-arm64.deb",
+    "bytes": 422294644,
+    "sha256": "85fb1d6853799cf5919a55106c2a16feebfd65714a90ce0e53f6d84404f19fa8",
+    "url": "https://github.com/JiuJiuyu77/Workbench-Runtime/releases/download/runtime-v3/swift-5.9.2_5.9.2.RELEASE_darwin-arm64.deb"
   }
 ]
