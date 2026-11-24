@@ -22,7 +22,13 @@ def prepare(stage=None):
         ('sdk26', 'iOS 26.0 SDK', ROOT / 'build/embedded-SDK26.zip'),
     ]:
         if not path.is_file():
-            pinned = next(row for row in json.loads((ROOT / 'Resources/DownloadResources.json').read_text()) if row['id'] == identifier)
+            _cfg = json.loads((ROOT / 'Resources/DownloadResources.json').read_text())
+            pinned = next((row for row in _cfg if row['id'] == identifier), None)
+            if pinned is None:
+                # 仓库精简后可能不再提供该可选包（如 developer-tools / reverse-tools），
+                # 直接跳过，避免 StopIteration 中断整个构建。
+                print(f'warn: DownloadResources.json 缺少 {identifier}，跳过')
+                continue
             if stage:
                 raise FileNotFoundError(f'Staging requires the archive: {path}')
             rows.append(pinned)
