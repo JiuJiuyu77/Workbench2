@@ -1,0 +1,52 @@
+# Local build outputs and secrets
+/build/
+/Vendor/*.xcframework
+/Vendor/REipa/target/
+/.local/
+*.ipa
+*.mobileprovision
+*.p12
+*.pfx
+*.key
+*.pem
+.env
+.env.*
+.DS_Store
+__pycache__/
+*.pyc
+# FLEX/Theos local build state (source and bundled release files are retained)
+/Plugins/FLEX/.theos/
+/Plugins/FLEX/packages/
+/Plugins/FLEX/*.deb
+/Plugins/FLEX/*.dylib
+
+# Optional tools are downloaded separately; never commit local resource archives.
+/Resources/iSH/developer-tools.tar
+/Resources/iSH/reverse-tools.tar
+# Workbench 2 —— 大体积资源不进仓库，构建前用 scripts/fetch_resources.sh 拉取
+# 依据：LocalSDKs/Resources/SDK 合计 511MB，Vendor 源码 355MB，均属于
+# 可从上流 dylix 仓库（yangokok886/dylix）复现的构建输入，不应占用版本库。
+
+/LocalSDKs/
+/Resources/SDK/
+/Resources/Perl/
+/Resources/FLEXProject/
+/Resources/FLEXPlugin/
+/Resources/ClangInclude/
+/Resources/RemoteWeb/
+/Resources/iSH/*.tar
+/Vendor/REipa/
+/Vendor/ReverseTools/
+/Plugins/FLEX/x/
+/Plugins/FLEX/*.dylib
+/Plugins/FLEX/packages/
+/Plugins/FLEX/.theos/
+
+# 首轮推送提速：大目录暂不入库，后续按需补
+/docs/
+/tests/
+/fixtures/
+/Plugins/
+/Resources/
+/Vendor/
+/LocalSDKs/
