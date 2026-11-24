@@ -25,7 +25,7 @@
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 2; }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return section == 0 ? 3 : 1;
+    return section == 0 ? 3 : 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -50,6 +50,20 @@
     cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
     cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
     cell.accessoryView = nil;
+
+    if (indexPath.section == 1 && indexPath.row == 1) {
+        cell.textLabel.text = @"JIT 授权";
+        cell.textLabel.textColor = UIColor.labelColor;
+        cell.detailTextLabel.text = [SPJIT shared].isEnabled
+            ? @"当前已可用，无需重复授权"
+            : ([SPJIT shared].canRequestTrollStoreJIT
+               ? @"点一下让 TrollStore 从外部附加（enable-jit）"
+               : @"本机没有 TrollStore 授权入口");
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        cell.imageView.image = [UIImage systemImageNamed:@"checkmark.shield.fill"];
+        return cell;
+    }
 
     if (indexPath.section == 1) {
         cell.textLabel.text = @"能力概览";
@@ -82,6 +96,31 @@
     }
     cell.accessoryView = sw;
     return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (indexPath.section != 1 || indexPath.row != 1) return;
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"JIT 授权"
+                                                                   message:[SPJIT shared].authorizationHint
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    if ([SPJIT shared].canRequestTrollStoreJIT && ![SPJIT shared].isEnabled) {
+        [sheet addAction:[UIAlertAction actionWithTitle:@"授权 JIT（打开 TrollStore）"
+                                                  style:UIAlertActionStyleDefault
+                                                handler:^(UIAlertAction *a) {
+            [[SPJIT shared] requestJITAuthorization];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"重新探测" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            [[SPJIT shared] probe];
+            dispatch_async(dispatch_get_main_queue(), ^{ [self.tableView reloadData]; });
+        });
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    sheet.popoverPresentationController.sourceView = tableView;
+    sheet.popoverPresentationController.sourceRect = [tableView rectForRowAtIndexPath:indexPath];
+    [self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)toggle:(UISwitch *)sw {

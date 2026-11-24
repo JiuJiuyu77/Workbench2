@@ -60,6 +60,17 @@ NS_ASSUME_NONNULL_BEGIN
 /// 打开/关闭「JIT 加速」开关（关闭后只用解释执行，用于排查崩溃）
 @property (nonatomic, assign) BOOL userEnabled;
 
+/// 本机是否能用 TrollStore 的「允许 JIT」入口（apple-magnifier://enable-jit）
+@property (nonatomic, readonly) BOOL canRequestTrollStoreJIT;
+
+/// 唤起 TrollStore 授权 JIT（外部 attach）。返回 NO 表示本机没有该入口。
+/// 迁移自 TrollAgent：进程无法同步调试自己，只有 TrollStore RootHelper
+/// 从外部 attach，MAP_JIT 页才真正可执行。
+- (BOOL)requestJITAuthorization;
+
+/// JIT 授权/排查说明
+- (NSString *)authorizationHint;
+
 @end
 
 NS_ASSUME_NONNULL_END

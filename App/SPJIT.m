@@ -5,6 +5,7 @@
 #import "SPJIT.h"
 #import "SPCompat.h"
 #import "SPJITService.h"
+#import "SPTrollStoreFix.h"
 #import <sys/mman.h>
 #import <mach/vm_statistics.h>
 
@@ -151,6 +152,20 @@ static void SPInvalidateICache(void *start, size_t len) {
 
     munmap(p, sz);
     return YES;
+}
+
+- (BOOL)canRequestTrollStoreJIT {
+    return [SPTrollStoreFix canRequestTrollStoreJIT];
+}
+
+- (BOOL)requestJITAuthorization {
+    BOOL ok = [SPTrollStoreFix requestJITAuthorization];
+    if (ok) SPLog(@"JIT 授权：已唤起 TrollStore，回到前台后重新探测");
+    return ok;
+}
+
+- (NSString *)authorizationHint {
+    return [SPTrollStoreFix jitAuthorizationHint];
 }
 
 - (NSString *)statusText {

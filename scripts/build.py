@@ -263,20 +263,29 @@ if ish_enabled:
         except subprocess.CalledProcessError as _ish_err:
             print('warn: iSH 沙盒构建失败（缺 ld.lld？），跳过该组件：%s' % _ish_err)
             print('warn: App 仍可正常使用，但「终端」功能会提示沙盒未就绪')
-    # iSH 构建已降级：manifest 可能不存在，后续校验整体跳过
+    # iSH 构建可能整体降级：manifest 不存在时不要硬链接 iSH 库，
+    # 也不要拷贝 runtime-manifest.json —— 之前这里直接 copy 会抛
+    # FileNotFoundError 把整个构建打断（终端功能本该是可选的）。
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
-    if manifest and (manifest.get('platform') != sdk or manifest.get('architecture') != arch or manifest.get('jit') is not False):
-        raise SystemExit('iSH platform/architecture manifest does not match app target')
-    for name, digest in (manifest.get('libraries') or {}).items():
-        library = ish_dir / name
-        if hashlib.sha256(library.read_bytes()).hexdigest() != digest:
-            raise SystemExit('iSH library digest mismatch: ' + name)
-        cmd.append(str(library))
-    cmd.extend(['-DWORKBENCH_HAS_ISH=1', '-I' + str(ROOT / 'Vendor/iSH'), '-I' + str(ish_dir / 'meson'), '-lsqlite3', '-lresolv'])
-    shutil.copy2(ROOT / 'Vendor/iSH/LICENSE.md', app / 'iSH-LICENSE.md')
-    shutil.copy2(ROOT / 'Vendor/iSH/LICENSE.IOS', app / 'iSH-LICENSE.IOS')
-    shutil.copy2(ROOT / 'Vendor/iSH/DYLIX-NOTICE.md', app / 'iSH-NOTICE.md')
-    shutil.copy2(manifest_path, app / 'iSH/runtime-manifest.json')
+    if not manifest:
+        print('warn: iSH manifest 缺失，本次构建不含终端沙盒（-DWORKBENCH_HAS_ISH=0）')
+        cmd.append('-DWORKBENCH_HAS_ISH=0')
+    else:
+        if (manifest.get('platform') != sdk or manifest.get('architecture') != arch or manifest.get('jit') is not False):
+            raise SystemExit('iSH platform/architecture manifest does not match app target')
+        for name, digest in (manifest.get('libraries') or {}).items():
+            library = ish_dir / name
+            if hashlib.sha256(library.read_bytes()).hexdigest() != digest:
+                raise SystemExit('iSH library digest mismatch: ' + name)
+            cmd.append(str(library))
+        cmd.extend(['-DWORKBENCH_HAS_ISH=1', '-I' + str(ROOT / 'Vendor/iSH'), '-I' + str(ish_dir / 'meson'), '-lsqlite3', '-lresolv'])
+        for name, dest in [('LICENSE.md', 'iSH-LICENSE.md'),
+                           ('LICENSE.IOS', 'iSH-LICENSE.IOS'),
+                           ('DYLIX-NOTICE.md', 'iSH-NOTICE.md')]:
+            source = ROOT / 'Vendor/iSH' / name
+            if source.is_file():
+                shutil.copy2(source, app / dest)
+        shutil.copy2(manifest_path, app / 'iSH/runtime-manifest.json')
 else:
     cmd.append('-DWORKBENCH_HAS_ISH=0')
 cmd.extend(str(p) for p in sorted((ROOT / 'App/AI').rglob('*.m')))
@@ -308,6 +317,20 @@ if args.simulator:
     }))
     cmd.extend(['-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__entitlements', '-Xlinker', str(simulated)])
 subprocess.run(cmd, check=True)
+# JIT 授权 helper：iOS 不允许进程同步调试自己，必须由独立进程对主 App
+# 做 PT_ATTACHEXC / PT_DETACH（TrollStore RootHelper 同款）。源码见 Native/jitd。
+# 缺失时不影响构建：SPJIT 会退回主进程 mmap 探测。
+_jit_src = ROOT / 'Native/jitd/spark-jitd.c'
+if _jit_src.is_file():
+    _bin = app / 'bin'
+    _bin.mkdir(parents=True, exist_ok=True)
+    _helper = _bin / 'spark-jitd'
+    subprocess.run(['xcrun', '--sdk', sdk, 'clang', '-arch', arch, '-isysroot', sysroot,
+                    '-mios-simulator-version-min=15.0' if args.simulator else '-miphoneos-version-min=15.0',
+                    '-O2', '-Wall', '-Wno-unused-result', str(_jit_src), '-o', str(_helper)], check=True)
+    _helper.chmod(0o755)
+    subprocess.run(['codesign', '--force', '--sign', args.identity, str(_helper)], check=True)
+    print('JIT helper: ' + str(_helper))
 for name in names:
     subprocess.run(['codesign', '--force', '--sign', args.identity, str(frameworks / (name + '.framework'))], check=True)
 # Share Extension passes copied files through an explicitly entitled App Group.

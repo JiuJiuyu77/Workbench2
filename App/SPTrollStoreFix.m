@@ -141,4 +141,41 @@ extern CFTypeRef SecTaskCopyValueForEntitlement(SecTaskRef task,
     [host presentViewController:a animated:YES completion:nil];
 }
 
+#pragma mark - JIT 授权（TrollStore 外部附加）
+
+// TrollStore 的 JIT 开关 URL。TrollStore 在 Info.plist 里注册了
+// apple-magnifier scheme，路径 enable-jit 由 RootHelper 处理：
+// 它从外部对本进程做 PT_ATTACHEXC / PT_DETACH，内核才真正放行 MAP_JIT。
+// 仅当 App 自己拿不到可执行内存时才用这条路（见 SPJIT）。
+static NSString *const kSPEnableJITURL = @"apple-magnifier://enable-jit";
+
++ (BOOL)canRequestJITAuthorization {
+    NSURL *url = [NSURL URLWithString:kSPEnableJITURL];
+    return url && [UIApplication.sharedApplication canOpenURL:url];
+}
+
++ (BOOL)requestJITAuthorization {
+    NSURL *url = [NSURL URLWithString:kSPEnableJITURL];
+    if (!url || ![UIApplication.sharedApplication canOpenURL:url]) {
+        SPLog(@"JIT 授权：系统未注册 apple-magnifier://enable-jit（非 TrollStore 安装）");
+        return NO;
+    }
+    SPLog(@"JIT 授权：唤起 TrollStore enable-jit");
+    [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL ok) {
+        SPLog(@"JIT 授权：TrollStore 回调 ok=%d", ok);
+    }];
+    return YES;
+}
+
++ (NSString *)jitAuthorizationHint {
+    if ([self canRequestJITAuthorization]) {
+        return @"点一下「授权 JIT」，TrollStore 会从外部给本 App 附加调试权限；"
+                "回到 App 后会自动重新探测。开发者模式需保持开启。";
+    }
+    return @"本机没有可用的 TrollStore JIT 授权入口：\n"
+            "• 用 TrollStore 安装官方 ipa 后此入口才会出现；\n"
+            "• 越狱环境可直接用 ldid -S 签名并开启 get-task-allow；\n"
+            "• 其它安装方式下 JIT 只能退回主进程 mmap 探测（部分设备会被内核拒绝）。";
+}
+
 @end

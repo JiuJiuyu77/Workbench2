@@ -143,6 +143,15 @@ jobs:
           cargo --version
           rustc --version
 
+      - name: 安装 meson / ninja（iSH 沙盒构建）
+        run: |
+          set -euo pipefail
+          # build_ish.py 用 meson+ninja 生成 iSH 的 guest 运行时；
+          # 之前 CI 里没有这两个工具，iSH 组件每次都静默降级。
+          brew install meson ninja
+          meson --version
+          ninja --version
+
       - name: 构建
         id: build
         run: |
