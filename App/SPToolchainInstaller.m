@@ -236,6 +236,12 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     NSString *theos = self.theosPath;
     if (theos.length) addDir([theos stringByAppendingPathComponent:@"bin"]);
     // 兜底：系统目录（有就用，没有也不报错）
+    // rootless 越狱（Dopamine / XinaA15 / 巨魔）把 Sileo/Cydia 装的东西放在 /var/jb，
+    // Theos 安装脚本推荐的 swift / com.kabiroberai.swift-toolchain 也在这里，
+    // 不加入 PATH 就会报 "swiftc: command not found"。
+    addDir(@"/var/jb/usr/local/bin");
+    addDir(@"/var/jb/usr/bin");
+    [pathDirs addObject:@"/usr/local/bin"];
     [pathDirs addObject:@"/usr/bin"];
     [pathDirs addObject:@"/bin"];
     [pathDirs addObject:@"/usr/sbin"];
