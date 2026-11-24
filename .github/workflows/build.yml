@@ -98,6 +98,20 @@ jobs:
           echo "path=$SDK" >> "$GITHUB_OUTPUT"
           echo "使用 SDK: $SDK"
 
+      - name: 安装 LLVM（提供 ld.lld）
+        run: |
+          set -euo pipefail
+          if command -v ld.lld >/dev/null 2>&1; then
+            echo "已存在: $(command -v ld.lld)"
+          else
+            brew install llvm || true
+          fi
+          LLD="$(command -v ld.lld || echo /opt/homebrew/opt/llvm/bin/ld.lld)"
+          test -x "$LLD" || { echo "::error::找不到 ld.lld"; exit 1; }
+          echo "LD.LD = $LLD"
+          # build_ish.py 用它链接 iSH 的 guest ELF 二进制
+          echo "WORKBENCH_LLD=$LLD" >> "$GITHUB_ENV"
+
       - name: 安装 Rust iOS 目标
         run: |
           set -euo pipefail
