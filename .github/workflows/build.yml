@@ -93,3 +93,26 @@ jobs:
       - name: 失败时打印日志尾部
         if: failure()
         run: tail -100 /tmp/build.log || true
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: 下载产物
+        uses: actions/download-artifact@v4
+        with:
+          name: Workbench2-ipa
+          path: dist
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Workbench ${{ github.ref_name }}
+          files: dist/*.ipa
+          generate_release_notes: true
+          draft: false
+          prerelease: false
