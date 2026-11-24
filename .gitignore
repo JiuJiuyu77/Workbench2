@@ -28,10 +28,7 @@ __pycache__/
 
 /LocalSDKs/
 /Resources/SDK/
-/Resources/Perl/
 /Resources/FLEXProject/
-/Resources/FLEXPlugin/
-/Resources/ClangInclude/
 /Resources/RemoteWeb/
 /Resources/iSH/*.tar
 /Plugins/FLEX/x/
