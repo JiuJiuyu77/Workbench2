@@ -101,28 +101,37 @@ jobs:
       - name: 安装 LLVM（提供 ld.lld）
         run: |
           set -euo pipefail
-          # brew 的 llvm 是 keg-only，ld.lld 不会进 PATH，必须显式找
-          LLD="$(command -v ld.lld 2>/dev/null || true)"
-          if [ -z "$LLD" ]; then
-            for c in /opt/homebrew/opt/llvm/bin/ld.lld \
-                     /opt/homebrew/opt/llvm/bin/lld \
-                     /usr/local/opt/llvm/bin/ld.lld; do
-              [ -x "$c" ] && { LLD="$c"; break; }
-            done
-          fi
-          if [ -z "$LLD" ]; then
-            echo "==> 安装 llvm"
-            brew install llvm || true
-            for c in /opt/homebrew/opt/llvm/bin/ld.lld \
+          # LLVM 23 起 Homebrew 把 LLD 拆成独立 formula（llvm 里只剩 clang 工具），
+          # 所以 ld.lld 既不在 PATH，也不在 /opt/homebrew/opt/llvm/bin 里。
+          # 依次探测：PATH → llvm keg → lld keg → 系统路径。
+          find_lld() {
+            command -v ld.lld 2>/dev/null && return 0
+            for c in /opt/homebrew/opt/lld/bin/ld.lld \
+                     /opt/homebrew/opt/llvm/bin/ld.lld \
+                     /usr/local/opt/lld/bin/ld.lld \
+                     /usr/local/opt/llvm/bin/ld.lld \
                      /opt/homebrew/opt/llvm/bin/lld; do
-              [ -x "$c" ] && { LLD="$c"; break; }
+              [ -x "$c" ] && { echo "$c"; return 0; }
             done
+            return 1
+          }
+          LLD="$(find_lld || true)"
+          if [ -z "$LLD" ]; then
+            echo "==> 安装 lld / llvm"
+            brew install lld llvm || brew install lld || true
+            LLD="$(find_lld || true)"
           fi
           if [ -z "$LLD" ]; then
             LLD="$(find /opt/homebrew /usr/local -maxdepth 6 -name 'ld.lld' -type f 2>/dev/null | head -1)"
           fi
-          test -n "$LLD" || { echo "::error::找不到 ld.lld"; ls -la /opt/homebrew/opt/llvm/bin/ 2>/dev/null || true; exit 1; }
+          test -n "$LLD" || {
+            echo "::error::找不到 ld.lld"
+            ls -la /opt/homebrew/opt/ 2>/dev/null || true
+            brew list --formula 2>/dev/null | grep -i lld || true
+            exit 1
+          }
           echo "LD.LD = $LLD"
+          "$LLD" --version || true
           # build_ish.py 用它链接 iSH 的 guest ELF 二进制
           echo "WORKBENCH_LLD=$LLD" >> "$GITHUB_ENV"
 
