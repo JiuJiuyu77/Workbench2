@@ -22,7 +22,7 @@
 
 // Dylix integration: observe real listeners, never infer readiness from stdout.
 #ifdef DYLIX_EMBEDDED_SANDBOX
-void (*dylix_listener_hook)(uint64_t,int,unsigned,bool);
+void (*workbench_listener_hook)(uint64_t,int,unsigned,bool);
 static int dylix_loopback_address(struct sockaddr *address) {
     if (address->sa_family == AF_INET) {
         struct sockaddr_in *a = (void *)address;
@@ -781,11 +781,11 @@ int_t sys_listen(fd_t sock_fd, int_t backlog) {
     if (err < 0)
         return errno_map();
 #ifdef DYLIX_EMBEDDED_SANDBOX
-    if (current->group->fs_context && dylix_listener_hook) {
+    if (current->group->fs_context && workbench_listener_hook) {
         struct sockaddr_storage local; socklen_t size = sizeof(local);
         if (getsockname(sock->real_fd, (void *)&local, &size) == 0) {
             unsigned port = local.ss_family == AF_INET ? ntohs(((struct sockaddr_in *)&local)->sin_port) : local.ss_family == AF_INET6 ? ntohs(((struct sockaddr_in6 *)&local)->sin6_port) : 0;
-            if (port) { sock->socket.dylix_listener_context = current->group->fs_context; sock->socket.dylix_listener_port = port; dylix_listener_hook(current->group->fs_context, sock->real_fd, port, true); }
+            if (port) { sock->socket.dylix_listener_context = current->group->fs_context; sock->socket.dylix_listener_port = port; workbench_listener_hook(current->group->fs_context, sock->real_fd, port, true); }
         }
     }
 #endif
@@ -2036,8 +2036,8 @@ static ssize_t sock_write(struct fd *fd, const void *buf, size_t size) {
 
 static int sock_close(struct fd *fd) {
 #ifdef DYLIX_EMBEDDED_SANDBOX
-    if (fd->socket.dylix_listener_context && dylix_listener_hook)
-        dylix_listener_hook(fd->socket.dylix_listener_context, fd->real_fd, fd->socket.dylix_listener_port, false);
+    if (fd->socket.dylix_listener_context && workbench_listener_hook)
+        workbench_listener_hook(fd->socket.dylix_listener_context, fd->real_fd, fd->socket.dylix_listener_port, false);
 #endif
     // [STAGE-0 PROBE] release the stub's socketpair write end.
     if (fd->socket.netlink_peer_fd >= 0) {
