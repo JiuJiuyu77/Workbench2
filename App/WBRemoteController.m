@@ -7,12 +7,14 @@
 #import "SPRemoteServer.h"
 #import "SPCompat.h"
 #import "GlassSupport.h"
+#import "WBCloudBuild.h"
 
 @interface WBRemoteController () <UITextFieldDelegate>
 @property (nonatomic, strong) UISwitch *serverSwitch;
 @property (nonatomic, strong) UITextField *hostField;
 @property (nonatomic, strong) UITextField *userField;
 @property (nonatomic, strong) UITextField *portField;
+@property (nonatomic, strong, nullable) NSDictionary *cloudRun;
 @end
 
 @implementation WBRemoteController
@@ -25,10 +27,13 @@
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 }
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 3; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 4; }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return section == 0 ? 2 : (section == 1 ? 3 : 1);
+    if (section == 0) return 2;
+    if (section == 1) return 3;
+    if (section == 2) return 6;   // GitHub Actions 云端构建
+    return 1;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -56,6 +61,11 @@
     cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     cell.accessoryView = nil;
+
+    if (indexPath.section == 2) {
+        [self configureCloudCell:cell row:indexPath.row];
+        return cell;
+    }
 
     if (indexPath.section == 0) {
         SPRemoteServer *srv = [SPRemoteServer shared];
@@ -100,6 +110,135 @@
     cell.textLabel.textColor = UIColor.systemBlueColor;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     return cell;
+}
+
+#pragma mark - GitHub Actions 云端构建
+
+- (void)configureCloudCell:(UITableViewCell *)cell row:(NSInteger)row {
+    cell.textLabel.textColor = UIColor.labelColor;
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    switch (row) {
+        case 0:
+            cell.textLabel.text = @"仓库";
+            cell.detailTextLabel.text = [WBCloudBuild repository] ?: @"点此填写 owner/name";
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            break;
+        case 1:
+            cell.textLabel.text = @"分支 / Tag";
+            cell.detailTextLabel.text = [WBCloudBuild reference];
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            break;
+        case 2: {
+            cell.textLabel.text = @"rootless 打包";
+            cell.detailTextLabel.text = @"关闭则按 rootful 编译";
+            UISwitch *sw = [UISwitch new];
+            sw.on = [WBCloudBuild rootless];
+            [sw addTarget:self action:@selector(toggleRootless:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = sw;
+            break;
+        }
+        case 3:
+            cell.textLabel.text = @"写入云端构建工作流";
+            cell.detailTextLabel.text = [NSString stringWithFormat:@".github/workflows/%@", [WBCloudBuild workflowFileName]];
+            cell.textLabel.textColor = UIColor.systemBlueColor;
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            break;
+        case 4:
+            cell.textLabel.text = @"触发云端构建";
+            cell.detailTextLabel.text = @"workflow_dispatch · 需要仓库写权限";
+            cell.textLabel.textColor = UIColor.systemBlueColor;
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            break;
+        default:
+            cell.textLabel.text = @"最近一次运行";
+            cell.detailTextLabel.text = [WBCloudBuild describeRun:self.cloudRun];
+            cell.textLabel.textColor = UIColor.labelColor;
+            cell.selectionStyle = self.cloudRun[@"html_url"] ? UITableViewCellSelectionStyleDefault : UITableViewCellSelectionStyleNone;
+            break;
+    }
+}
+
+- (void)toggleRootless:(UISwitch *)sw {
+    [WBCloudBuild setRootless:sw.isOn];
+}
+
+- (NSString *)cloudToken {
+    NSString *token = [WBCloudBuild savedToken];
+    if (!token.length) {
+        [self alert:@"没有 GitHub token" msg:@"先到 Git 页登录 GitHub（或导入 PAT），云端构建会复用同一份凭据。"];
+        return nil;
+    }
+    return token;
+}
+
+- (void)promptRepository {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"仓库"
+        message:@"owner/name，例如 JiuJiuyu77/MyTweak" preferredStyle:UIAlertControllerStyleAlert];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.text = [WBCloudBuild repository];
+        tf.placeholder = @"owner/name";
+        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        tf.autocorrectionType = UITextAutocorrectionTypeNo;
+    }];
+    [a addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
+        NSString *value = [a.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+        if (value.length && [value componentsSeparatedByString:@"/"].count != 2) {
+            [self alert:@"格式不对" msg:@"仓库要写成 owner/name。"];
+            return;
+        }
+        [WBCloudBuild setRepository:value];
+        [self.tableView reloadData];
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)promptReference {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"分支 / Tag"
+        message:@"workflow_dispatch 会在该引用上运行" preferredStyle:UIAlertControllerStyleAlert];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.text = [WBCloudBuild reference];
+        tf.placeholder = @"main";
+        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        tf.autocorrectionType = UITextAutocorrectionTypeNo;
+    }];
+    [a addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
+        [WBCloudBuild setReference:a.textFields.firstObject.text];
+        [self.tableView reloadData];
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)installCloudWorkflow {
+    NSString *token = [self cloudToken];
+    if (!token) return;
+    [self alert:@"正在写入" msg:@"正在把工作流提交到仓库…"];
+    [WBCloudBuild installWorkflowWithToken:token completion:^(NSString *message, NSError *error) {
+        [self alert:error ? @"写入失败" : @"完成" msg:error.localizedDescription ?: (message ?: @"已写入")];
+    }];
+}
+
+- (void)runCloudBuild {
+    NSString *token = [self cloudToken];
+    if (!token) return;
+    [WBCloudBuild dispatchWithToken:token completion:^(NSError *error) {
+        if (error) {
+            [self alert:@"触发失败" msg:error.localizedDescription];
+            return;
+        }
+        [self refreshCloudRun];
+    }];
+}
+
+- (void)refreshCloudRun {
+    NSString *token = [WBCloudBuild savedToken];
+    if (!token.length) return;
+    [WBCloudBuild latestRunWithToken:token completion:^(NSDictionary *run, NSError *error) {
+        if (run) self.cloudRun = run;
+        [self.tableView reloadData];
+        if (error) [self alert:@"查询失败" msg:error.localizedDescription];
+    }];
 }
 
 #pragma mark - 控件
@@ -184,8 +323,32 @@
         return;
     }
     if (indexPath.section == 2) {
+        switch (indexPath.row) {
+            case 0: [self promptRepository]; break;
+            case 1: [self promptReference]; break;
+            case 3: [self installCloudWorkflow]; break;
+            case 4: [self runCloudBuild]; break;
+            case 5: {
+                NSString *url = [self.cloudRun[@"html_url"] isKindOfClass:NSString.class] ? self.cloudRun[@"html_url"] : nil;
+                if (url.length) {
+                    [UIApplication.sharedApplication openURL:[NSURL URLWithString:url] options:@{} completionHandler:nil];
+                } else {
+                    [self refreshCloudRun];
+                }
+                break;
+            }
+            default: break;
+        }
+        return;
+    }
+    if (indexPath.section == 3) {
         [self testConnection];
     }
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self refreshCloudRun];
 }
 
 - (void)testConnection {
