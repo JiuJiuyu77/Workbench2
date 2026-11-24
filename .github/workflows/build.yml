@@ -1,0 +1,95 @@
+name: build
+
+# Workbench 2 构建流水线
+#   · 大体积依赖一律在 CI 内下载，不进仓库：
+#       Dylix 工具链（5 个 xcframework，78MB）
+#       iOS 17.0 / 26.5 SDK（按需，运行时下载）
+#   · 内置 16.5 SDK 以 Resources/SDK16.5.tar.gz 随仓库分发（30MB）
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 环境信息
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+          sw_vers
+          df -h /
+
+      - name: 缓存 Dylix 工具链
+        id: tc-cache
+        uses: actions/cache@v4
+        with:
+          path: Vendor/xcf
+          key: dylix-toolchain-v1-${{ hashFiles('dependencies.lock.json') }}
+
+      - name: 下载 Dylix 工具链（缺缓存时）
+        if: steps.tc-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          URL="https://github.com/yangokok886/dylix/releases/download/v1.0.3-open-source-build134/Dylix-toolchain-v1.tar.gz"
+          echo "==> 下载 $URL"
+          curl -L --retry 3 --retry-delay 5 -o /tmp/dtc.tgz "$URL"
+          ls -lh /tmp/dtc.tgz
+          echo "8fd21764e9988d54bb24e356cfbd3093bac6c66825fd073ee9d38360bec9d6b4  /tmp/dtc.tgz" | shasum -a 256 -c -
+          mkdir -p Vendor/xcf
+          tar xzf /tmp/dtc.tgz -C Vendor/xcf
+          ls Vendor/xcf/Vendor
+
+      - name: 安装 xcframework 到 Vendor
+        run: |
+          set -euo pipefail
+          mkdir -p Vendor
+          for f in Vendor/xcf/Vendor/*.xcframework; do
+            name=$(basename "$f")
+            rm -rf "Vendor/$name"
+            cp -R "$f" "Vendor/$name"
+            echo "  $name"
+          done
+          ls -d Vendor/*.xcframework
+
+      - name: 校验内置 SDK
+        run: |
+          set -euo pipefail
+          test -f Resources/SDK16.5.tar.gz || { echo "::error::缺 Resources/SDK16.5.tar.gz"; exit 1; }
+          ls -lh Resources/SDK16.5.tar.gz
+          tar tzf Resources/SDK16.5.tar.gz | head -3
+
+      - name: 构建
+        id: build
+        run: |
+          set -euo pipefail
+          python3 --version
+          python3 scripts/build.py --identity - --bundle-id com.HuQing.Workbench 2>&1 | tee /tmp/build.log
+          echo "---- 产物 ----"
+          ls -lh build/*.ipa 2>/dev/null || true
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: Workbench2-ipa
+          path: build/*.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 失败时打印日志尾部
+        if: failure()
+        run: tail -100 /tmp/build.log || true

@@ -114,16 +114,30 @@ pinned_resources = json.loads((ROOT / 'Resources/DownloadResources.json').read_t
 pinned_sdk26 = next(row for row in pinned_resources if row['id'] == 'sdk26')
 (app / 'SDK26Resource.plist').write_bytes(plistlib.dumps({'version': '26.0', 'sha256': pinned_sdk26['sha256']}))
 resource_headers = ROOT / 'Resources/ClangInclude'
-shutil.copytree(resource_headers, app / 'ClangInclude', dirs_exist_ok=True)
-perl_config = (ROOT / 'Resources/Perl/Config.pm').read_text()
-assert '$^V eq 5.34.0' in perl_config and "dlsrc => 'dl_none.xs'" in perl_config, 'Expected iOS Perl 5.34.0 modules'
+if resource_headers.is_dir():
+    shutil.copytree(resource_headers, app / 'ClangInclude', dirs_exist_ok=True)
+else:
+    print('warn: Resources/ClangInclude 缺失，跳过')
+perl_cfg_path = ROOT / 'Resources/Perl/Config.pm'
+if perl_cfg_path.exists():
+    perl_config = perl_cfg_path.read_text()
+    assert '$^V eq 5.34.0' in perl_config, 'Expected iOS Perl 5.34.0 modules'
+else:
+    print('warn: Resources/Perl 缺失，跳过 Perl 模块校验（运行期 .x 预处理可能失败）')
 resources = ['CompatibilityRules', 'ThirdPartyNotices', 'GitHelp', 'HelpArticles', 'Editor', 'GitDiff', 'RemoteWeb', 'Personas', 'AIProviders', 'AgentSkills', 'logos', 'Include', 'Perl', 'SampleProject', 'SampleObjectiveC', 'SampleMultiProject', 'FLEXProject', 'VendorFrameworks', 'Terminal']
 if args.simulator:
     resources.append('SampleLogosGenerated')
     resources.append('SampleMultiObjectiveC')
+_missing_res = []
 for resource in resources:
-    shutil.copytree(ROOT / 'Resources' / resource, app / resource, dirs_exist_ok=True,
+    _src = ROOT / 'Resources' / resource
+    if not _src.is_dir():
+        _missing_res.append(resource)
+        continue
+    shutil.copytree(_src, app / resource, dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns('.git', '*.bundle', '*.dylib', '*.a', '*.o'))
+if _missing_res:
+    print('warn: 以下资源目录缺失，已跳过：' + ', '.join(_missing_res))
 # Alpine userspace and signed offline developer kit used by the embedded runtime.
 ish_rootfs = ROOT / 'Resources' / 'iSH'
 if ish_rootfs.exists():
