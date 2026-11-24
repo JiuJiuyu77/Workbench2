@@ -157,16 +157,21 @@ if ish_rootfs.exists():
                     ignore=shutil.ignore_patterns('developer-tools.tar', 'reverse-tools.tar', 'GuestTools'))
 from prepare_download_resources import prepare as prepare_optional_resources
 (app / 'DownloadResources.json').write_text(json.dumps(prepare_optional_resources(), ensure_ascii=False, indent=2))
+# FLEX 插件是可选资源：仓库精简后可能不随源码分发，
+# 缺失时跳过而不是中断整个构建（App 本身不依赖它启动）。
 flex_source = ROOT / 'Resources/FLEXPlugin'
-flex_manifest = json.loads((flex_source / 'manifest.json').read_text(encoding='utf-8'))
-flex_dest = app / 'FLEXPlugin'
-flex_dest.mkdir(exist_ok=True)
-for entry in flex_manifest['files'].values():
-    source = flex_source / entry['name']
-    if source.name != entry['name'] or hashlib.sha256(source.read_bytes()).hexdigest() != entry['sha256']:
-        raise SystemExit('Bundled FLEX package is missing or does not match manifest: ' + str(source))
-    shutil.copy2(source, flex_dest / source.name)
-shutil.copy2(flex_source / 'manifest.json', flex_dest / 'manifest.json')
+if (flex_source / 'manifest.json').is_file():
+    flex_manifest = json.loads((flex_source / 'manifest.json').read_text(encoding='utf-8'))
+    flex_dest = app / 'FLEXPlugin'
+    flex_dest.mkdir(exist_ok=True)
+    for entry in flex_manifest['files'].values():
+        source = flex_source / entry['name']
+        if source.name != entry['name'] or hashlib.sha256(source.read_bytes()).hexdigest() != entry['sha256']:
+            raise SystemExit('Bundled FLEX package is missing or does not match manifest: ' + str(source))
+        shutil.copy2(source, flex_dest / source.name)
+    shutil.copy2(flex_source / 'manifest.json', flex_dest / 'manifest.json')
+else:
+    print('warn: Resources/FLEXPlugin 缺失，跳过 FLEX 插件打包')
 if args.profile:
     shutil.copy2(args.profile, app / 'embedded.mobileprovision')
 # Precompressed offline editor assets reduce LAN transfer latency.
