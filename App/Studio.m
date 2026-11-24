@@ -35,6 +35,7 @@
 #import "GitService.h"
 #import "ProjectSafety.h"
 #import "GlassSupport.h"
+#import "WorkbenchHealth.h"
 #import "../Vendor/MBProgressHUD/MBProgressHUD.h"
 #import <objc/message.h>
 #import <sys/utsname.h>
@@ -389,7 +390,7 @@ static NSString *OptimizationName(NSString *value){return @{@"release-speed":@"�
 @end
 static NSArray *StudioSettingSections(void){return @[
  @{@"title":@"插件开发",@"rows":@[@[@"build",@"默认构建设置",@"hammer",@"SDK、最低系统与产物"],@[@"optimization",@"优化方案",@"speedometer",@""],@[@"git",@"Git 与源代码管理",@"point.3.connected.trianglepath.dotted",@"身份、服务账号与自动存档"],@[@"remote",@"局域网远程",@"network",@"浏览器工作台与本机连接"]]},
- @{@"title":@"终端与逆向",@"rows":@[@[@"terminal",@"终端",@"terminal",@"打开独立 Linux 沙盒"],@[@"tools",@"安装工具",@"shippingbox",@"按需安装、查看状态与卸载"],@[@"headers",@"IPA 头文件导出",@"doc.text.magnifyingglass",@"本机分析与 ZIP 分享"],@[@"crash",@"离线崩溃分析",@"waveform.path.ecg",@"导入 .ips 与符号档案"]]},
+ @{@"title":@"终端与逆向",@"rows":@[@[@"terminal",@"终端",@"terminal",@"打开独立 Linux 沙盒"],@[@"tools",@"安装工具",@"shippingbox",@"按需安装、查看状态与卸载"],@[@"headers",@"IPA 头文件导出",@"doc.text.magnifyingglass",@"本机分析与 ZIP 分享"],@[@"crash",@"离线崩溃分析",@"waveform.path.ecg",@"导入 .ips 与符号档案"],@[@"health",@"环境自检",@"checkmark.shield",@"检查构建依赖与工具链是否齐全"]]},
  @{@"title":@"数据与工具",@"rows":@[@[@"mounts",@"挂载文件夹",@"externaldrive",@"管理外部文件夹授权"],@[@"backup",@"备份与恢复",@"archivebox",@"项目、会话、附件与软件配置"],@[@"storage",@"存储空间",@"internaldrive",@"查看占用与清理缓存"]]},
  @{@"title":@"外观与编辑器",@"rows":@[@[@"theme",@"界面外观",@"circle.lefthalf.filled",@""],@[@"font",@"代码字号",@"textformat.size",@""],@[@"tabs",@"始终显示底部导航栏",@"rectangle.bottomthird.inset.filled",@""]]},
  @{@"title":@"关于与支持",@"rows":@[@[@"about",@"关于 Workbench",@"info.circle",@"版本更新、使用说明与工具链"],@[@"feedback",@"反馈与建议",@"bubble.left.and.bubble.right",@""],@[@"website",@"官方网站",@"globe",@""],@[@"source",@"项目开源地址",@"chevron.left.forwardslash.chevron.right",@""],@[@"license",@"软件许可证",@"doc.text",@""]]}
@@ -426,6 +427,7 @@ static NSArray *StudioSettingSections(void){return @[
  else if([key isEqual:@"tools"])page=TFAIISHToolsController(nil);
  else if([key isEqual:@"headers"])page=TFAIClassDumpController();
  else if([key isEqual:@"crash"])page=[[StudioCrashTools alloc]initWithStyle:UITableViewStyleInsetGrouped];
+ else if([key isEqual:@"health"])page=WBHealthController();
  else if([key isEqual:@"mounts"])page=TFAIDirectoryRegistryController(nil);
  else if([key isEqual:@"backup"])page=DXBackupController();
  else if([key isEqual:@"storage"])page=TMCStorageController();
