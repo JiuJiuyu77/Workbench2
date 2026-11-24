@@ -47,7 +47,6 @@ __pycache__/
 /tests/
 /fixtures/
 /Plugins/
-/Vendor/
 /LocalSDKs/
 
 # SDK：内置 16.5 以 tar.gz 形式入库；17.0 / 26.5 构建时下载
