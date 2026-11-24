@@ -9,10 +9,10 @@
 #import "GlassSupport.h"
 #import "WBCloudBuild.h"
 
-@interface WBRemoteController : UITableViewController <UITextFieldDelegate>
+@interface WBRemoteViewController : UITableViewController <UITextFieldDelegate>
 @end
 
-@interface WBRemoteController ()
+@interface WBRemoteViewController ()
 @property (nonatomic, strong) UISwitch *serverSwitch;
 @property (nonatomic, strong) UITextField *hostField;
 @property (nonatomic, strong) UITextField *userField;
@@ -20,7 +20,7 @@
 @property (nonatomic, strong, nullable) NSDictionary *cloudRun;
 @end
 
-@implementation WBRemoteController
+@implementation WBRemoteViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -389,5 +389,5 @@
 @end
 
 UIViewController *WBRemoteController(void) {
-    return [[TMCNavigationController alloc] initWithRootViewController:[WBRemoteController new]];
+    return [[TMCNavigationController alloc] initWithRootViewController:[WBRemoteViewController new]];
 }

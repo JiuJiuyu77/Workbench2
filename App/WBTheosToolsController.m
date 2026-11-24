@@ -9,12 +9,12 @@
 #import "SPCompat.h"
 #import "GlassSupport.h"
 
-@interface WBTheosToolsController : UITableViewController
+@interface WBTheosToolsListController : UITableViewController
 @property (nonatomic, strong) NSArray<SPComponentInfo *> *items;
 @property (nonatomic, assign) BOOL busy;
 @end
 
-@implementation WBTheosToolsController
+@implementation WBTheosToolsListController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -199,5 +199,5 @@
 @end
 
 UIViewController *WBTheosToolsController(void) {
-    return [[TMCNavigationController alloc] initWithRootViewController:[WBTheosToolsController new]];
+    return [[TMCNavigationController alloc] initWithRootViewController:[WBTheosToolsListController new]];
 }

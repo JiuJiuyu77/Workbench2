@@ -10,10 +10,10 @@
 #import "SPCompat.h"
 #import "GlassSupport.h"
 
-@interface WBToolsController : UITableViewController
+@interface WBToolsViewController : UITableViewController
 @end
 
-@implementation WBToolsController
+@implementation WBToolsViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -144,5 +144,5 @@
 @end
 
 UIViewController *WBToolsController(void) {
-    return [[TMCNavigationController alloc] initWithRootViewController:[WBToolsController new]];
+    return [[TMCNavigationController alloc] initWithRootViewController:[WBToolsViewController new]];
 }

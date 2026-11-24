@@ -9,13 +9,16 @@
 #import "SPToolchainInstaller.h"
 #import "GlassSupport.h"
 
-@interface WBReverseController () <UIDocumentPickerDelegate>
+@interface WBReverseViewController : UITableViewController
+@end
+
+@interface WBReverseViewController () <UIDocumentPickerDelegate>
 @property (nonatomic, copy, nullable) NSString *targetPath;
 @property (nonatomic, strong) UITextView *output;
 @property (nonatomic, assign) BOOL running;
 @end
 
-@implementation WBReverseController
+@implementation WBReverseViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -195,5 +198,5 @@
 @end
 
 UIViewController *WBReverseController(void) {
-    return [[TMCNavigationController alloc] initWithRootViewController:[WBReverseController new]];
+    return [[TMCNavigationController alloc] initWithRootViewController:[WBReverseViewController new]];
 }

@@ -1,23 +1,23 @@
 // All access to toolOperations and guest probes runs on the runtime queue.
 - (BOOL)toolInstalledOnQueue:(NSString *)identifier session:(NSString *)session{
-#if DYLIX_HAS_ISH
+#if WORKBENCH_HAS_ISH
  NSString *mount=self.mounts[EnvironmentKey()];if(!mount)return NO;
- struct task *saved=current;current=DylixInit;struct fs_info *initial=DylixInit->fs;DylixInit->fs=fs_info_copy(initial);BOOL ok=SetRoot(mount)==0;
+ struct task *saved=current;current=WorkbenchInit;struct fs_info *initial=WorkbenchInit->fs;WorkbenchInit->fs=fs_info_copy(initial);BOOL ok=SetRoot(mount)==0;
  NSDictionary *package=DXLinuxPackage(identifier);
  NSArray *paths=package?@[package[@"path"]]:[identifier isEqual:@"developer-tools"]?@[@"/usr/bin/python3",@"/usr/bin/node",@"/usr/bin/npm",@"/usr/bin/git",@"/usr/local/bin/ldid"]:@[@"/opt/dylix-reverse/usr/bin/radare2",@"/opt/dylix-reverse/lib/ld-musl-aarch64.so.1"];
  if(package&&ok){NSData *data=GuestRead(@"/lib/apk/db/installed",16*1024*1024,nil);NSString *database=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];NSString *record=[NSString stringWithFormat:@"\nP:%@\n",package[@"package"]];ok=[[@"\n" stringByAppendingString:database?:@""] containsString:record];}
  for(NSString *path in paths){struct statbuf st={0};if(generic_statat(AT_PWD,path.UTF8String,&st,true)<0||!S_ISREG(st.mode)||(st.mode&0111)==0)ok=NO;}
- fs_info_release(DylixInit->fs);DylixInit->fs=initial;current=saved;return ok;
+ fs_info_release(WorkbenchInit->fs);WorkbenchInit->fs=initial;current=saved;return ok;
 #else
  return NO;
 #endif
 }
 - (BOOL)packageOwnedOnQueue:(NSString *)identifier session:(NSString *)session{
-#if DYLIX_HAS_ISH
+#if WORKBENCH_HAS_ISH
  NSDictionary *p=DXLinuxPackage(identifier);NSString *mount=self.mounts[EnvironmentKey()];if(!p||!mount)return NO;
- struct task *saved=current;current=DylixInit;struct fs_info *initial=DylixInit->fs;DylixInit->fs=fs_info_copy(initial);BOOL ok=SetRoot(mount)==0;
+ struct task *saved=current;current=WorkbenchInit;struct fs_info *initial=WorkbenchInit->fs;WorkbenchInit->fs=fs_info_copy(initial);BOOL ok=SetRoot(mount)==0;
  NSData *data=ok?GuestRead(@"/lib/apk/db/installed",16*1024*1024,nil):nil;NSString *database=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];ok=[[@"\n" stringByAppendingString:database?:@""] containsString:[NSString stringWithFormat:@"\nP:.dylix-item-%@\n",p[@"package"]]];
- fs_info_release(DylixInit->fs);DylixInit->fs=initial;current=saved;return ok;
+ fs_info_release(WorkbenchInit->fs);WorkbenchInit->fs=initial;current=saved;return ok;
 #else
  return NO;
 #endif
