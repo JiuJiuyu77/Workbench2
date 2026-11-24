@@ -101,13 +101,27 @@ jobs:
       - name: 安装 LLVM（提供 ld.lld）
         run: |
           set -euo pipefail
-          if command -v ld.lld >/dev/null 2>&1; then
-            echo "已存在: $(command -v ld.lld)"
-          else
-            brew install llvm || true
+          # brew 的 llvm 是 keg-only，ld.lld 不会进 PATH，必须显式找
+          LLD="$(command -v ld.lld 2>/dev/null || true)"
+          if [ -z "$LLD" ]; then
+            for c in /opt/homebrew/opt/llvm/bin/ld.lld \
+                     /opt/homebrew/opt/llvm/bin/lld \
+                     /usr/local/opt/llvm/bin/ld.lld; do
+              [ -x "$c" ] && { LLD="$c"; break; }
+            done
           fi
-          LLD="$(command -v ld.lld || echo /opt/homebrew/opt/llvm/bin/ld.lld)"
-          test -x "$LLD" || { echo "::error::找不到 ld.lld"; exit 1; }
+          if [ -z "$LLD" ]; then
+            echo "==> 安装 llvm"
+            brew install llvm || true
+            for c in /opt/homebrew/opt/llvm/bin/ld.lld \
+                     /opt/homebrew/opt/llvm/bin/lld; do
+              [ -x "$c" ] && { LLD="$c"; break; }
+            done
+          fi
+          if [ -z "$LLD" ]; then
+            LLD="$(find /opt/homebrew /usr/local -maxdepth 6 -name 'ld.lld' -type f 2>/dev/null | head -1)"
+          fi
+          test -n "$LLD" || { echo "::error::找不到 ld.lld"; ls -la /opt/homebrew/opt/llvm/bin/ 2>/dev/null || true; exit 1; }
           echo "LD.LD = $LLD"
           # build_ish.py 用它链接 iSH 的 guest ELF 二进制
           echo "WORKBENCH_LLD=$LLD" >> "$GITHUB_ENV"
