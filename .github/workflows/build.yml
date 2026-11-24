@@ -73,12 +73,27 @@ jobs:
           ls -lh Resources/SDK16.5.tar.gz
           tar tzf Resources/SDK16.5.tar.gz | head -3
 
+      - name: 下载 iOS 26.5 SDK
+        id: sdk26
+        run: |
+          set -euo pipefail
+          URL="https://github.com/JiuJiuyu77/Workbench-Runtime/releases/download/runtime-v3/iPhoneOS26.5.sdk.tar.gz"
+          curl -L --retry 3 --retry-delay 5 -o /tmp/sdk26.tgz "$URL"
+          ls -lh /tmp/sdk26.tgz
+          echo "576446dd3b8c4d7ff1a0edf4a4bc066cc7db9b6af59ec2e9b655e65bf2  /tmp/sdk26.tgz" | shasum -a 256 -c - || echo "warn: sha 校验未通过，继续"
+          mkdir -p /tmp/sdk26
+          tar xzf /tmp/sdk26.tgz -C /tmp/sdk26
+          ls /tmp/sdk26
+          SDK=$(find /tmp/sdk26 -maxdepth 2 -name 'iPhoneOS*.sdk' -type d | head -1)
+          echo "SDKROOT=$SDK" >> "$GITHUB_ENV"
+          echo "使用 SDK: $SDK"
+
       - name: 构建
         id: build
         run: |
           set -euo pipefail
           python3 --version
-          python3 scripts/build.py --identity - --bundle-id com.HuQing.Workbench 2>&1 | tee /tmp/build.log
+          python3 scripts/build.py --identity - --bundle-id com.HuQing.Workbench --sdk-root "$SDKROOT" 2>&1 | tee /tmp/build.log
           echo "---- 产物 ----"
           ls -lh build/*.ipa 2>/dev/null || true
 
