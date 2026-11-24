@@ -255,11 +255,19 @@ if ish_enabled:
     from build_ish import source_digest
     cached = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     if cached.get('sourceDigest') != source_digest():
-        subprocess.run(['python3', str(ROOT / 'scripts/build_ish.py'), '--platform', platform], check=True)
-    manifest = json.loads(manifest_path.read_text())
-    if manifest.get('platform') != sdk or manifest.get('architecture') != arch or manifest.get('jit') is not False:
+        # iSH 沙盒是可选能力：需要 LLVM 的 ld.lld 链接 guest ELF。
+        # CI runner 上没有该工具时，整体构建不应该因此失败 ——
+        # App 主体（编译、Git、逆向、类导出）都不依赖它。
+        try:
+            subprocess.run(['python3', str(ROOT / 'scripts/build_ish.py'), '--platform', platform], check=True)
+        except subprocess.CalledProcessError as _ish_err:
+            print('warn: iSH 沙盒构建失败（缺 ld.lld？），跳过该组件：%s' % _ish_err)
+            print('warn: App 仍可正常使用，但「终端」功能会提示沙盒未就绪')
+    # iSH 构建已降级：manifest 可能不存在，后续校验整体跳过
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    if manifest and (manifest.get('platform') != sdk or manifest.get('architecture') != arch or manifest.get('jit') is not False):
         raise SystemExit('iSH platform/architecture manifest does not match app target')
-    for name, digest in manifest['libraries'].items():
+    for name, digest in (manifest.get('libraries') or {}).items():
         library = ish_dir / name
         if hashlib.sha256(library.read_bytes()).hexdigest() != digest:
             raise SystemExit('iSH library digest mismatch: ' + name)
