@@ -27,12 +27,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 环境信息
+      - name: 选择最新 Xcode
         run: |
+          set -euo pipefail
+          echo "==> 可用 Xcode："
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+          BEST=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$BEST" ]; then
+            echo "==> 选用 $BEST"
+            sudo xcode-select -s "$BEST"
+          fi
           xcodebuild -version
+          xcrun swift --version
           xcrun --sdk iphoneos --show-sdk-path
-          sw_vers
-          df -h /
 
       - name: 缓存 Dylix 工具链
         id: tc-cache
