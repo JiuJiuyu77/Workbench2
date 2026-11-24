@@ -33,7 +33,7 @@
  });
 }
 - (void)observeToolProcess:(NSString *)processID identifier:(NSString *)identifier session:(NSString *)session removing:(BOOL)removing deadline:(NSTimeInterval)deadline{
- dispatch_async(self.queue,^{NSString *key=[ToolKey(session) stringByAppendingString:identifier];DylixISHJob *job=self.processJobs[processID];
+ dispatch_async(self.queue,^{NSString *key=[ToolKey(session) stringByAppendingString:identifier];WorkbenchISHJob *job=self.processJobs[processID];
   if(job&&!job.done&&NSProcessInfo.processInfo.systemUptime<deadline){dispatch_after(dispatch_time(DISPATCH_TIME_NOW,300*NSEC_PER_MSEC),self.queue,^{[self observeToolProcess:processID identifier:identifier session:session removing:removing deadline:deadline];});return;}
   BOOL package=DXLinuxPackage(identifier)!=nil;BOOL installed=[self toolInstalledOnQueue:identifier session:session],ok=job&&job.done&&!job.cancelled&&!job.timedOut&&job.exitStatus==0&&(removing?(package||!installed):installed);
   if(removing&&!ok&&installed&&!package)[NSUserDefaults.standardUserDefaults setBool:YES forKey:[identifier isEqual:@"developer-tools"]?@"DylixISHDeveloperToolsAutoload":@"DylixISHReverseToolsAutoload"];

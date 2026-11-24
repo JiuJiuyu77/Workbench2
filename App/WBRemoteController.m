@@ -9,7 +9,10 @@
 #import "GlassSupport.h"
 #import "WBCloudBuild.h"
 
-@interface WBRemoteController () <UITextFieldDelegate>
+@interface WBRemoteController : UITableViewController <UITextFieldDelegate>
+@end
+
+@interface WBRemoteController ()
 @property (nonatomic, strong) UISwitch *serverSwitch;
 @property (nonatomic, strong) UITextField *hostField;
 @property (nonatomic, strong) UITextField *userField;

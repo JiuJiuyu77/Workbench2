@@ -50,7 +50,7 @@ typedef NS_ENUM(NSInteger, SPTrollStoreState) {
 #pragma mark - JIT 授权（TrollStore 外部附加）
 
 /// 系统是否注册了 TrollStore 的 JIT 授权 URL（apple-magnifier://enable-jit）
-+ (BOOL)canRequestJITAuthorization;
++ (BOOL)canRequestTrollStoreJIT;
 
 /// 唤起 TrollStore 的「允许 JIT」开关。
 /// 机制（同 TrollAgent FAQ）：iOS 不允许进程同步调试自己，必须由 TrollStore 的
