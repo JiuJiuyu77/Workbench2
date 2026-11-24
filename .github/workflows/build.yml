@@ -92,7 +92,10 @@ jobs:
           tar xzf /tmp/sdk26.tgz -C /tmp/sdk26
           ls /tmp/sdk26
           SDK=$(find /tmp/sdk26 -maxdepth 2 -name 'iPhoneOS*.sdk' -type d | head -1)
-          echo "SDKROOT=$SDK" >> "$GITHUB_ENV"
+          # 千万不能导出 SDKROOT：Rust 的 build script（proc-macro2/quote 等）
+          # 会用 cc 编译 macOS host 目标，一旦读到 iOS 的 SDKROOT 就会出现
+          # "using sysroot for iPhoneOS but targeting MacOSX" 并链接失败。
+          echo "path=$SDK" >> "$GITHUB_OUTPUT"
           echo "使用 SDK: $SDK"
 
       - name: 构建
@@ -100,7 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 --version
-          python3 scripts/build.py --identity - --bundle-id com.HuQing.Workbench --sdk-root "$SDKROOT" 2>&1 | tee /tmp/build.log
+          python3 scripts/build.py --identity - --bundle-id com.HuQing.Workbench --sdk-root "${{ steps.sdk26.outputs.path }}" 2>&1 | tee /tmp/build.log
           echo "---- 产物 ----"
           ls -lh build/*.ipa 2>/dev/null || true
 
