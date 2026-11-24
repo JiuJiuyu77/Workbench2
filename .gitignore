@@ -1,7 +1,6 @@
 # Local build outputs and secrets
 /build/
 /Vendor/*.xcframework
-/Vendor/REipa/target/
 /.local/
 *.ipa
 *.mobileprovision
@@ -35,8 +34,6 @@ __pycache__/
 /Resources/ClangInclude/
 /Resources/RemoteWeb/
 /Resources/iSH/*.tar
-/Vendor/REipa/
-/Vendor/ReverseTools/
 /Plugins/FLEX/x/
 /Plugins/FLEX/*.dylib
 /Plugins/FLEX/packages/
