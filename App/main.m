@@ -151,6 +151,10 @@ static NSArray<NSString *> *sourcePaths(NSString *root) {
     return paths;
 }
 #import "CompilerController.h"
+#import "SPBuilder.h"
+#import "SPModels.h"
+#import "SPToolchain.h"
+#import "SPToolchainInstaller.h"
 #import "Studio.h"
 #import "GitUI.h"
 
@@ -211,6 +215,52 @@ extern UIViewController *TMCStorageBackup258Regression(void);
 @end
 
 @implementation CompilerController
+
+#pragma mark - 新架构构建（Theos + make）
+
+/// 尝试用新架构（SPBuilder / Theos + make）构建。
+/// 返回 YES 表示已由新架构完成；NO 表示前置条件不满足或构建失败，调用方继续走内嵌编译。
+/// 说明：dylix 原有的进程内 LLVM 编译保留为回退路径，仅在异常时使用，
+///      并在失败弹窗里明确告知用户「已自动回退」。
+- (BOOL)tryTheosBuildProject:(NSString *)projectDirectory buildDir:(NSString *)build {
+    SPToolchainInstaller *inst = [SPToolchainInstaller shared];
+    if (!inst.isInstalled) {
+        TMCLog(NULL, "新架构：Theos 工具链未安装，回退内嵌编译\n");
+        return NO;
+    }
+
+    NSError *error = nil;
+    SPToolchainProfile *profile = [[SPToolchain shared] localProfileWithSDK:nil error:&error];
+    if (!profile || profile.theosPath.length == 0) {
+        TMCLog(NULL, "新架构：工具链 profile 不可用（%s），回退内嵌编译\n",
+               (error.localizedDescription ?: @"未知原因").UTF8String);
+        return NO;
+    }
+
+    SPProject *project = [SPProject projectAtPath:projectDirectory error:&error];
+    if (!project || !project.isTheosProject) {
+        TMCLog(NULL, "新架构：工程无 Makefile，改用内嵌编译\n");
+        return NO;
+    }
+
+    TMCLog(NULL, "新架构：使用 Theos 构建（%s）\n", profile.theosPath.UTF8String);
+    __block BOOL succeeded = NO;
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+
+    [SPBuilder buildProject:project options:project.options profile:profile
+                     onLine:^(NSString *line, SPLogLevel level) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!line.length) return;
+            self.console.text = [self.console.text stringByAppendingFormat:@"%@\n", line];
+        });
+    } onFinish:^(SPJob *job) {
+        succeeded = (job.exitCode == 0);
+        dispatch_semaphore_signal(sem);
+    }];
+
+    dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3600 * NSEC_PER_SEC)));
+    return succeeded;
+}
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"本地编译验证";
@@ -588,6 +638,18 @@ extern UIViewController *TMCStorageBackup258Regression(void);
         NSString *source=self.importedSource;
         if(!self.importedProject&&!source){source=[build stringByAppendingPathComponent:@"smoke.m"];[@"#import <Foundation/Foundation.h>\n@interface MobileSmoke : NSObject\n-(NSString*)message;\n@end\n@implementation MobileSmoke\n-(NSString*)message { return @\"Built inside iOS\"; }\n@end\n" writeToFile:source atomically:YES encoding:NSUTF8StringEncoding error:nil];}
         NSString *projectDirectory=self.importedProject?:source.stringByDeletingLastPathComponent;
+        // 新架构优先：Theos + make；失败或不适用时自动回退到下方内嵌编译
+        if ([self tryTheosBuildProject:projectDirectory buildDir:build]) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.console.text = [self.console.text stringByAppendingString:@"BUILD SUCCEEDED — 新架构（Theos）\n"];
+                TMCBuildRunning = NO;
+                TFScreenAwakeSet(@"build", NO);
+                self.navigationItem.rightBarButtonItem.enabled = YES;
+                self.navigationItem.leftBarButtonItem.enabled = YES;
+                ((UIBarButtonItem *)self.toolbarItems.firstObject).enabled = YES;
+            });
+            return;
+        }
         NSDictionary *config = TMCEffectiveBuildOptions(projectConfig(projectDirectory),NSUserDefaults.standardUserDefaults);
         NSString *debPattern=config[@"outputPattern-deb"]?:globalDebPattern,*dylibPattern=[config[@"exportDylib"] boolValue]?(config[@"outputPattern-dylib"]?:globalDylibPattern):@"{product}";
         NSMutableArray<NSString *> *projectSources = [sourcePaths(projectDirectory) mutableCopy];
