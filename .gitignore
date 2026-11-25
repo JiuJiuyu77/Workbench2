@@ -27,9 +27,9 @@ __pycache__/
 # 可从上流 dylix 仓库（yangokok886/dylix）复现的构建输入，不应占用版本库。
 
 /LocalSDKs/
-/Resources/SDK/
 /Resources/FLEXProject/
 /Resources/RemoteWeb/
+/Resources/SDK/
 /Resources/iSH/*.tar
 /Plugins/FLEX/x/
 /Plugins/FLEX/*.dylib

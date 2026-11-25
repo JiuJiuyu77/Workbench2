@@ -97,6 +97,8 @@
                       "{ ls \"$t\"/sdks/iPhoneOS*.sdk >/dev/null 2>&1 || "
                       "ls \"$SPARK_TC\"/sdks/iPhoneOS*.sdk >/dev/null 2>&1; } || continue; "
                       "export THEOS=\"$t\"; break; done"];
+        // 有些工程把 THEOS 写死成 /var/mobile/theos；能写就补一条软链，失败忽略。
+        [lines addObject:@"if [ -n \"${THEOS:-}\" ] && [ ! -e /var/mobile/theos ]; then mkdir -p /var/mobile 2>/dev/null; ln -s \"$THEOS\" /var/mobile/theos 2>/dev/null || true; fi"];
         // SDK 在顶层时，把它软链进 $THEOS/sdks，让 make 找得到
         // SDK 注入：**不用软链**。
         // TrollStore 的 ldid -s 遇到符号链接会整体失败（实测踩过），
