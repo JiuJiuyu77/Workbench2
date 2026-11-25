@@ -252,6 +252,14 @@ jobs:
           echo "---- 产物 ----"
           ls -lh build/*.ipa 2>/dev/null || true
 
+      - name: 核验 ipa 内容
+        run: |
+          set -euo pipefail
+          du -sh build/device/Workbench.app/Toolchain
+          du -sh build/device/Workbench.app/Toolchain/swift-toolchain || true
+          unzip -l build/*.ipa | grep -c "Toolchain/swift-toolchain" || echo "0 swift entries"
+          unzip -l build/*.ipa | tail -1
+
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
