@@ -1,6 +1,6 @@
 #import "DXRemoteService.h"
 #import "DXFlexPluginInfo.h"
-#import "../AI/AIV2Contracts.h"
+#import "../Runtime/ContractsV2.h"
 #import "../GlassSupport.h"
 #import <CoreImage/CoreImage.h>
 @interface DXDAVProjects : UITableViewController

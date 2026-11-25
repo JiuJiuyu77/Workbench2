@@ -1,4 +1,4 @@
-#import "../AI/Background/TFScreenAwake.h"
+#import "../Runtime/Background/TFScreenAwake.h"
 #import "DXRemoteService.h"
 #import "DXRemoteHTTP.h"
 #import "DXRemoteAccess.h"
@@ -7,8 +7,8 @@
 #import "DXRemoteWebDAV.h"
 #import "DXRemoteTLS.h"
 #import "DXRemoteNetwork.h"
-#import "../AI/AIV2Contracts.h"
-#import "../AI/Background/TFAIAudioBackground.h"
+#import "../Runtime/ContractsV2.h"
+#import "../Runtime/Background/TFAIAudioBackground.h"
 #import "../GitService.h"
 #import "../SDKResources.h"
 #import <ifaddrs.h>

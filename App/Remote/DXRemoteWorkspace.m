@@ -1,22 +1,12 @@
-#import "../AI/Sandbox/TFAIISHRemote.h"
-#import "../AI/Actions/TFAISessionResources.h"
-#import "../AI/Providers/TFAIRegistry.h"
-#import "../AI/Persona/TFAIPersona.h"
-#import "../AI/Registry/TFAIToolRegistry.h"
-#import "../AI/Agent/TFAIAgentContext.h"
-#import "../AI/Agent/TFAIBuildQueue.h"
-#import "../AI/UI/TFAIModels.h"
-#import "../AI/Providers/TFAIProtocol.h"
+#import "../Runtime/Sandbox/TFAIISHRemote.h"
 #import "DXRemoteWorkspace.h"
 #import "DXRemoteAccess.h"
 #import "DXRemoteHTTP.h"
 #import "DXFlexBridge.h"
-#import "../AI/AIV2Contracts.h"
-#import "../AI/Permissions/TFAIPolicy.h"
-#import "../AI/Binary/TFAIBinary.h"
-#import "../AI/ClassDump/TFAIClassDump.h"
-#import "../AI/ClassDump/TFAIClassDumpExecution.h"
-#import "../AI/Tools/TFAIBuildCache.h"
+#import "../Runtime/ContractsV2.h"
+#import "../Runtime/Permissions/TFAIPolicy.h"
+#import "../Runtime/Binary/TFAIBinary.h"
+#import "../Runtime/ClassDump/TFAIClassDumpExecution.h"
 #import "../ProjectSafety.h"
 #import "../GitService.h"
 #import "../GitPreferences.h"
@@ -100,7 +90,7 @@ static NSString *DXFileDigest(NSString *path,NSError **error){
   NSString *root=selected[@"root"];
   dispatch_async(self.queue,^{
    if(generation!=self.generation||[job[@"state"] isEqual:@"cancelled"])return;
-   if([action hasPrefix:@"terminal_"]){NSString *operation=[action substringFromIndex:9],*session=args[@"sessionID"];BOOL belongs=NO;if(root.length&&[session isKindOfClass:NSString.class])for(NSDictionary *record in [TFAISessions sessions:project])if([record[@"id"] isEqual:session])belongs=YES;if(!belongs){[self finish:job result:nil error:DXError(@"请选择当前项目的真实会话后访问终端")];return;}void(^execute)(void)=^{dispatch_async(dispatch_get_main_queue(),^{[TFAIISHRemote perform:operation arguments:args session:session device:device completion:^(NSDictionary *r,NSError *e){dispatch_async(self.queue,^{[self finish:job result:r error:e];});}];});};if([@[@"status",@"read"] containsObject:operation])execute();else [self await:job summary:@{@"summary":@"执行已获手机会话授权的 Linux 终端操作",@"operation":operation,@"sessionID":session} execute:execute];return;}
+   if([action hasPrefix:@"terminal_"]){NSString *operation=[action substringFromIndex:9],*session=args[@"sessionID"];BOOL belongs=NO;if(root.length&&[session isKindOfClass:NSString.class])belongs=session.length>0;if(!belongs){[self finish:job result:nil error:DXError(@"请选择当前项目的真实会话后访问终端")];return;}void(^execute)(void)=^{dispatch_async(dispatch_get_main_queue(),^{[TFAIISHRemote perform:operation arguments:args session:session device:device completion:^(NSDictionary *r,NSError *e){dispatch_async(self.queue,^{[self finish:job result:r error:e];});}];});};if([@[@"status",@"read"] containsObject:operation])execute();else [self await:job summary:@{@"summary":@"执行已获手机会话授权的 Linux 终端操作",@"operation":operation,@"sessionID":session} execute:execute];return;}
    if([action isEqual:@"projects"]){[self finish:job result:@{@"projects":projects} error:nil];return;}
    if([action isEqual:@"flex_publish"]){NSError *error=nil;NSDictionary *result=[[DXFlexBridge shared] publish:args device:device error:&error];[self finish:job result:result error:error];return;}
    if([action isEqual:@"tasks"]){NSMutableArray *a=[NSMutableArray new];for(NSString *key in self.jobs.allKeys)if([self.jobs[key][@"device"] isEqual:device]&&![self.jobs[key][@"action"] isEqual:@"tasks"]){NSMutableDictionary *summary=[[self job:key device:device] mutableCopy];[summary removeObjectForKey:@"result"];[summary removeObjectForKey:@"live"];[summary removeObjectForKey:@"confirmation"];[summary removeObjectForKey:@"nonce"];[a addObject:summary];}[self finish:job result:@{@"tasks":a} error:nil];return;}
@@ -150,14 +140,14 @@ static NSString *DXFileDigest(NSString *path,NSError **error){
    NSString *ownerKey=[NSString stringWithFormat:@"%@/%@",device,project];NSMutableDictionary *owner=self.owners[ownerKey];if(!owner){owner=[NSMutableDictionary new];self.owners[ownerKey]=owner;}
    if([action isEqual:@"flex_tool_permission"]){
     NSString *sid=args[@"sessionID"];
-    if(!sid.length||![TFAISessions loadSession:sid project:project]){[self finish:job result:nil error:DXError(@"请先创建或选择当前项目的会话")];return;}
+    if(!sid.length){[self finish:job result:nil error:DXError(@"请先创建或选择当前项目的会话")];return;}
     NSMutableDictionary *grants=owner[@"flexSessionGrants"];if(!grants){grants=[NSMutableDictionary new];owner[@"flexSessionGrants"]=grants;}
     NSDictionary *(^state)(void)=^NSDictionary *{return @{@"sessionID":sid,@"enabled":@([grants[sid] boolValue]),@"scope":@"conversation"};};
     if(!args[@"enabled"]){[self finish:job result:state() error:nil];return;}
     if(![args[@"enabled"] isKindOfClass:NSNumber.class]){[self finish:job result:nil error:DXError(@"FLEX 权限开关无效")];return;}
     if(![args[@"enabled"] boolValue]){[grants removeObjectForKey:sid];[self finish:job result:state() error:nil];return;}
     if([grants[sid] boolValue]){[self finish:job result:state() error:nil];return;}
-    [self await:job summary:@{@"summary":@"授权本会话全部 FLEX 工具",@"project":selected[@"name"]?:project,@"details":@"包含 FLEX 敏感读取、截图、触摸、视图和录制控制。本会话有效，无时间限制，可随时撤销；撤销设备授权或停止服务后结束。项目写入、构建和 Git 仍按原流程审批。"} execute:^{if(![TFAISessions loadSession:sid project:project]){[self finish:job result:nil error:DXError(@"会话已删除")];return;}grants[sid]=@YES;[self finish:job result:state() error:nil];}];return;
+    [self await:job summary:@{@"summary":@"授权本会话全部 FLEX 工具",@"project":selected[@"name"]?:project,@"details":@"包含 FLEX 敏感读取、截图、触摸、视图和录制控制。本会话有效，无时间限制，可随时撤销；撤销设备授权或停止服务后结束。项目写入、构建和 Git 仍按原流程审批。"} execute:^{grants[sid]=@YES;[self finish:job result:state() error:nil];}];return;
    }
    if([action isEqual:@"editor_autosave_status"]){[self finish:job result:@{@"enabled":@([owner[@"remoteAutosaveGrant"] length]>0)} error:nil];return;}
    if([action isEqual:@"editor_autosave"]){
@@ -257,68 +247,8 @@ static NSString *DXFileDigest(NSString *path,NSError **error){
  NSError *error=nil;NSFileHandle *handle=[NSFileHandle fileHandleForWritingToURL:[NSURL fileURLWithPath:input[@"path"]] error:&error];if(handle){unsigned long long end=0;if([handle seekToEndReturningOffset:&end error:&error]&&end==[input[@"bytes"] unsignedLongLongValue])[handle writeData:data error:&error];else if(!error)error=DXError(@"上传暂存文件大小已变化");[handle closeAndReturnError:nil];}if(!error)input[@"bytes"]=@([input[@"bytes"] unsignedIntegerValue]+data.length);[self finish:job result:@{@"inputID":identifier,@"bytes":input[@"bytes"]} error:error];
 }
 - (void)ai:(NSMutableDictionary *)job action:(NSString *)action arguments:(NSDictionary *)args root:(NSString *)root owner:(NSMutableDictionary *)owner{
- NSString *scope=job[@"projectID"];
- dispatch_async(dispatch_get_main_queue(),^{
-  if([action isEqual:@"ai_sessions"]){NSArray *sessions=[TFAISessions summaries:scope];dispatch_async(self.queue,^{[self finish:job result:@{@"sessions":sessions} error:nil];});return;}
-  if([action isEqual:@"ai_connections"]){
-   NSMutableArray *a=[NSMutableArray new];for(NSDictionary *c in TFAIAvailableModels())[a addObject:@{@"id":c[@"id"],@"name":c[@"name"]?:@"",@"model":c[@"model"]?:@"",@"provider":TFAIProvider(c[@"protocol"])[@"name"]?:c[@"name"]?:@"",@"protocol":TFAIWireProtocol(c[@"protocol"]?:@"chat"),@"capabilities":@{@"text":TFAIResolvedCapability(c,@"text")[@"state"],@"stream":TFAIResolvedCapability(c,@"stream")[@"state"],@"image":TFAIResolvedCapability(c,@"image")[@"state"],@"tools":TFAIResolvedCapability(c,@"tools")[@"state"],@"thinking":TFAIResolvedCapability(c,@"thinking")[@"state"]},@"observedCapabilities":TFAIObservedCapabilities(c),@"thinkingConfiguration":TFAIThinkingConfiguration(c),@"efforts":TFAIReasoningOptions(c)}];
-   NSDictionary *defaultConnection=[TFAIConnections effectiveForProject:scope],*snapshot=TFAIPersonaStore.shared.snapshot,*active=[TFAIPersonaEngine active:snapshot];
-   NSMutableDictionary *modules=[NSMutableDictionary new];for(NSString *key in @[@"skills",@"mcp",@"browser",@"memory",@"build_queue"])modules[key]=@([TFAIToolRegistry enabled:key]);
-   NSMutableArray *tasks=[NSMutableArray new];for(NSDictionary *task in TFAIBuildQueue.shared.tasks)if([task[@"root"] isEqual:root]){NSMutableDictionary *safe=[NSMutableDictionary new];for(NSString *key in @[@"id",@"name",@"state",@"stage",@"progress",@"createdAt",@"startedAt",@"finishedAt"])if(task[key])safe[key]=task[key];[tasks addObject:safe];}
-   NSDictionary *context=@{@"persona":@{@"enabled":snapshot[@"enabled"]?:@NO,@"activeCount":@(active?1:0),@"name":active[@"name"]?:@"",@"mode":active[@"mode"]?:@""},@"modules":modules,@"skillCount":@([modules[@"skills"] boolValue]?[TFAIAgentContext skills:root].count:0),@"tasks":tasks,@"isolatedToolsAvailable":@NO};
-   dispatch_async(self.queue,^{[self finish:job result:@{@"connections":a,@"defaultID":defaultConnection[@"id"]?:@"",@"defaultModel":defaultConnection[@"model"]?:@"",@"context":context} error:nil];});return;
-  }
-  NSString *sid=args[@"sessionID"];NSMutableDictionary *session=sid.length?[TFAISessions loadSession:sid project:scope]:nil;
-  if([action isEqual:@"ai_create"]){
-   NSMutableDictionary *created=[TFAISessions create:scope title:[args[@"name"] length]?[args[@"name"] substringToIndex:MIN(30,[args[@"name"] length])]:@"FLEX 新会话"];NSError *error=nil;
-   BOOL saved=[TFAISessions save:created project:scope error:&error];
-   dispatch_async(self.queue,^{[self finish:job result:saved?created:nil error:saved?nil:(error?:DXError(@"建立会话失败"))];});return;
-  }
-  if([action isEqual:@"ai_read"]){dispatch_async(self.queue,^{[self finish:job result:session error:session?nil:DXError(@"会话不存在")];});return;}
-  if(![action isEqual:@"ai_send"]){dispatch_async(self.queue,^{[self finish:job result:nil error:DXError(@"AI 操作无效")];});return;}
-  NSString *text=args[@"text"];if(![text isKindOfClass:NSString.class]||!text.length||text.length>64000||TFAIContainsSecret(text)){dispatch_async(self.queue,^{[self finish:job result:nil error:DXError(@"请输入不含凭据的消息，最多 64000 字符")];});return;}
-  if(sid.length&&TFAISessionHasLiveRun(scope,sid)){dispatch_async(self.queue,^{[self finish:job result:nil error:DXError(@"会话正在手机或其他客户端运行，请等待结束")];});return;}
-  if(sid.length&&!session){dispatch_async(self.queue,^{[self finish:job result:nil error:DXError(@"会话不存在，未创建替代会话")];});return;}
-  NSDictionary *chosen=[TFAIConnections effectiveForProject:scope];NSString *cid=args[@"connectionID"],*model=args[@"model"];
-  if(cid.length){chosen=nil;for(NSDictionary *candidate in TFAIAvailableModels())if([candidate[@"id"] isEqual:cid]&&(!model.length||[candidate[@"model"] isEqual:model])){chosen=candidate;break;}}
-  if(!chosen||![chosen[@"model"] length]){dispatch_async(self.queue,^{[self finish:job result:nil error:DXError(@"模型已移除或未配置，请重新选择手机中已保存的模型")];});return;}
-  // Omitted effort inherits the current session only for the same model.
-  // Explicit auto must clear any connection-level override.
-  BOOL sameModel=[session[@"connectionID"] isEqual:chosen[@"id"]]&&[session[@"modelID"] isEqual:chosen[@"model"]];
-  NSString *requestedEffort=args[@"reasoningEffort"]?: (sameModel?session[@"reasoningEffort"]:nil);
-  NSString *effort=TFAIValidatedReasoningEffort(chosen,requestedEffort?:@"auto");if(args[@"reasoningEffort"]&&![effort isEqual:args[@"reasoningEffort"]]){dispatch_async(self.queue,^{[self finish:job result:nil error:DXError(@"当前模型不支持所选思考档位，请刷新模型列表")];});return;}
-  NSMutableDictionary *requestConnection=[chosen mutableCopy];if(![effort isEqual:@"auto"])requestConnection[@"reasoningEffort"]=effort;else[requestConnection removeObjectForKey:@"reasoningEffort"];
-  if(!session)session=[TFAISessions create:scope title:[text substringToIndex:MIN(30,text.length)]];
-  sid=session[@"id"];[[DXFlexBridge shared] bindSession:sid device:job[@"device"]];NSMutableArray *messages=[session[@"messages"] mutableCopy]?:[NSMutableArray new];[messages addObject:@{@"role":@"user",@"content":text,@"messageID":NSUUID.UUID.UUIDString,@"timestamp":@(NSDate.date.timeIntervalSince1970)}];
-  session[@"connectionID"]=chosen[@"id"];session[@"modelID"]=chosen[@"model"];session[@"reasoningEffort"]=effort;session[@"messages"]=messages;session[@"state"]=@"streaming";session[@"projectRoot"]=root;session[@"projectName"]=root.lastPathComponent;session[@"remoteRevision"]=@([session[@"remoteRevision"] unsignedLongLongValue]+1);NSError *error=nil;
-  if(![TFAISessions save:session project:scope error:&error]){dispatch_async(self.queue,^{[self finish:job result:nil error:error];});return;}
-  TFAISetSessionLiveRun(scope,sid,YES);
-  id<TFAIRuntimeV2> runtime=(id)TFAICreateRuntime(root,scope,^(NSString *name,NSDictionary *arguments,TFAIResult completion){
-   dispatch_async(self.queue,^{[self withOwner:owner project:scope completion:^(NSError *e){if(e){completion(nil,e);return;}dispatch_async(dispatch_get_main_queue(),^{DXStudioWorkspace(owner,name,arguments,completion);});}];});
-  });
-  [runtime setRemoteExecution:YES];[runtime activateSession:sid];[runtime configurePermissionPreset:@"assisted" paths:@[] error:nil];[runtime setInteractionMode:[args[@"mode"] isEqual:@"ask"]?@"ask":@"develop"];
-  [runtime setNextConnection:requestConnection];
-  __block NSTimeInterval lastSaved=0;
-  runtime.event=^(NSDictionary *event){
-   NSString *type=event[@"type"];
-   BOOL recordChanged=TFAIRecordSessionToolEvent(session,event);
-   if(recordChanged&&[@[@"tool_started",@"tool_result"] containsObject:type]){session[@"remoteRevision"]=@([session[@"remoteRevision"] unsignedLongLongValue]+1);NSError *recordError=nil;if(![TFAISessions save:session project:scope error:&recordError])dispatch_async(self.queue,^{job[@"persistenceError"]=recordError.localizedDescription?:@"保存工具记录失败";});}
-   if([type isEqual:@"checkpoint"]){NSDictionary *checkpoint=event[@"checkpoint"];session[@"runtimeCheckpoint"]=checkpoint;if([checkpoint[@"messages"] isKindOfClass:NSArray.class])session[@"messages"]=checkpoint[@"messages"];NSTimeInterval now=NSDate.date.timeIntervalSince1970;if([event[@"durable"] boolValue]||now-lastSaved>2){lastSaved=now;session[@"remoteRevision"]=@([session[@"remoteRevision"] unsignedLongLongValue]+1);NSError *saveError=nil;[TFAISessions save:session project:scope error:&saveError];if(saveError)dispatch_async(self.queue,^{job[@"persistenceError"]=saveError.localizedDescription;});}}
-   if([type isEqual:@"done"]){session[@"messages"]=event[@"messages"]?:session[@"messages"];session[@"state"]=event[@"state"]?:@"interrupted";session[@"remoteRevision"]=@([session[@"remoteRevision"] unsignedLongLongValue]+1);NSError *saveError=nil;[TFAISessions save:session project:scope error:&saveError];TFAISetSessionLiveRun(scope,sid,NO);dispatch_async(self.queue,^{[self finish:job result:@{@"sessionID":sid,@"state":session[@"state"],@"messages":session[@"messages"]} error:saveError];[self.runtimes removeObjectForKey:job[@"id"]];});}
-   if(![type isEqual:@"checkpoint"])dispatch_async(self.queue,^{
-    NSMutableArray *events=job[@"events"];if(!events){events=[NSMutableArray new];job[@"events"]=events;}NSMutableDictionary *record=[Clean(event) mutableCopy];NSUInteger sequence=[job[@"eventSequence"] unsignedIntegerValue]+1;job[@"eventSequence"]=@(sequence);record[@"sequence"]=@(sequence);[events addObject:record];while(events.count>80)[events removeObjectAtIndex:0];
-    if([type isEqual:@"flex_capture_status"])job[@"flexCaptureStatus"]=record;
-    if([@[@"reasoning",@"analysis_summary"] containsObject:type]){NSString *next=[(job[@"reasoning"]?:@"") stringByAppendingString:event[@"text"]?:@""];job[@"reasoning"]=next.length>128000?[next substringFromIndex:next.length-128000]:next;}
-    if([type isEqual:@"text"]){NSString *previous=job[@"text"]?:@"";NSString *next=[previous stringByAppendingString:event[@"text"]?:@""];job[@"text"]=next.length>512000?[next substringFromIndex:next.length-512000]:next;}
-   });
-  };
-  runtime.approval=^(NSDictionary *plan,void(^decision)(BOOL,NSArray<NSNumber *> *)){
-   dispatch_async(self.queue,^{NSString *name=plan[@"request"][@"name"];BOOL flex=[@[@"flex_sensitive_read",@"flex_control"] containsObject:name];
-    if(flex&&[owner[@"flexSessionGrants"][sid] boolValue]){dispatch_async(dispatch_get_main_queue(),^{decision(YES,nil);});return;}
-    NSDictionary *summary=flex?@{@"summary":@"授权本会话全部 FLEX 工具",@"details":@"包含敏感读取、截图、触摸、视图和录制控制；本会话有效，无时间限制，可在权限中撤销。项目写入、构建和 Git 仍单独审批。"}:plan;
-    [self await:job summary:summary execute:^{if(flex){NSMutableDictionary *grants=owner[@"flexSessionGrants"];if(!grants){grants=[NSMutableDictionary new];owner[@"flexSessionGrants"]=grants;}grants[sid]=@YES;}dispatch_async(dispatch_get_main_queue(),^{decision(YES,nil);});}];});
-  };
-  dispatch_async(self.queue,^{self.runtimes[job[@"id"]]=runtime;job[@"sessionID"]=sid;dispatch_async(dispatch_get_main_queue(),^{[runtime send:messages session:sid];});});
- });
+ // 本版不含 AI：远程工作台的 ai_* 动作统一拒绝，读写/构建/Git 走 TFAIToolbox。
+ [self finish:job result:nil error:DXError(@"本版不含 AI 会话能力")];
 }
+
 @end

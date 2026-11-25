@@ -1,6 +1,6 @@
 #import "DXRemoteWebDAV.h"
 #import "DXRemoteHTTP.h"
-#import "../AI/Permissions/TFAIPolicy.h"
+#import "../Runtime/Permissions/TFAIPolicy.h"
 #import "../GitPreferences.h"
 #import "../ProjectSafety.h"
 static NSString *XML(NSString *s){return [[[[[s?:@"" stringByReplacingOccurrencesOfString:@"&" withString:@"&amp;"] stringByReplacingOccurrencesOfString:@"<" withString:@"&lt;"] stringByReplacingOccurrencesOfString:@">" withString:@"&gt;"] stringByReplacingOccurrencesOfString:@"\"" withString:@"&quot;"] stringByReplacingOccurrencesOfString:@"'" withString:@"&apos;"];}

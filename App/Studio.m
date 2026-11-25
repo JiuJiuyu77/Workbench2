@@ -1,29 +1,25 @@
 #import "DocumentPresentation.h"
-#import "AI/Resources/DXAppUpdate.h"
-#import "AI/Backup/DXBackup.h"
-#import "AI/Attachments/TFAIDirectoryRegistry.h"
-#import "AI/Sandbox/TFAIISHHub.h"
-#import "AI/Registry/TFAIToolRegistry.h"
-#import "AI/Agent/TFAIBuildQueue.h"
-#import "AI/Tools/TFAIBuildCache.h"
+#import "Runtime/Resources/DXAppUpdate.h"
+#import "Runtime/Backup/DXBackup.h"
+#import "Runtime/Attachments/TFAIDirectoryRegistry.h"
+#import "Runtime/Sandbox/TFAIISHHub.h"
+#import "Runtime/Registry/TFAIToolRegistry.h"
+#import "Runtime/Build/TFAIBuildQueue.h"
+#import "Runtime/Build/TFAIBuildCache.h"
 #import "ArchiveImport.h"
 #import "StorageSpace.h"
-#import "AI/Sandbox/TFAIISHTerminal.h"
-#import "AI/Sandbox/TFAIISHRuntime.h"
+#import "Runtime/Sandbox/TFAIISHTerminal.h"
+#import "Runtime/Sandbox/TFAIISHRuntime.h"
 #import "Remote/DXRemoteService.h"
 #import "SDKResources.h"
-#import "AI/ClassDump/TFAIClassDump.h"
-#import "AI/Attachments/TFAIArtifactInspection.h"
+#import "Runtime/ClassDump/TFAIClassDump.h"
+#import "Runtime/Attachments/TFAIArtifactInspection.h"
 #import "ProjectTrash.h"
 #import "RuntimeDiagnostics.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import "Studio.h"
-#import "AI/AIContracts.h"
-#import "AI/AIV2Contracts.h"
-#import "AI/UI/AIUI.h"
-#import "AI/UI/TFAIUsageUI.h"
-#import "AI/UI/TFAIPersonaUI.h"
-#import "AI/Persona/TFAIPersona.h"
+#import "Runtime/Contracts.h"
+#import "Runtime/ContractsV2.h"
 #import "CompilerController.h"
 #import "OutputNaming.h"
 #import "CompatibilityRepair.h"
@@ -435,8 +431,8 @@ static NSArray *StudioSettingSections(void){return @[
  else if([key isEqual:@"headers"])page=TFAIClassDumpController();
  else if([key isEqual:@"crash"])page=[[StudioCrashTools alloc]initWithStyle:UITableViewStyleInsetGrouped];
  else if([key isEqual:@"health"])page=WBHealthController();
- else if([key isEqual:@"mounts"])page=TFAIDirectoryRegistryController(nil);
- else if([key isEqual:@"backup"])page=DXBackupController();
+
+
  else if([key isEqual:@"storage"])page=TMCStorageController();
  else if([key isEqual:@"about"])page=[[StudioAbout alloc]initWithStyle:UITableViewStyleInsetGrouped];
  else if([key isEqual:@"optimization"]){StudioOptimizationPicker *picker=[[StudioOptimizationPicker alloc]initWithStyle:UITableViewStyleInsetGrouped];picker.selected=GlobalOptimization();picker.symbolPolicy=[NSUserDefaults.standardUserDefaults stringForKey:@"StudioSymbolPolicy"]?:@"auto";picker.symbolCompletion=^(NSString *value){[NSUserDefaults.standardUserDefaults setObject:value forKey:@"StudioSymbolPolicy"];return YES;};__weak typeof(self) weak=self;picker.completion=^(NSString *value){[NSUserDefaults.standardUserDefaults setObject:value forKey:@"StudioOptimization"];[weak.tableView reloadData];};page=picker;}
@@ -777,15 +773,20 @@ dispatch_async(dispatch_get_main_queue(),^{self.modificationDates=dates;self.fil
 - (void)background;
 - (BOOL)save;
 @end
+// 项目终端不再依赖被删除的 AI 会话表：用项目路径摘要作为稳定的会话 key，
+// 同一个项目始终落到同一个 Linux 文件系统。
+static NSString *ProjectTerminalSession(NSString *root){
+ if(!root.length)return nil;
+ NSData *data=[root dataUsingEncoding:NSUTF8StringEncoding];
+ uint64_t h=1469598103934665603ULL;
+ const unsigned char *b=data.bytes;
+ for(NSUInteger i=0;i<data.length;i++){h^=b[i];h*=1099511628211ULL;}
+ return [NSString stringWithFormat:@"proj-%016llx",(unsigned long long)h];
+}
 static void OpenLinuxProjectTerminal(UIViewController *host,NSString *root){
- NSString *scope=TFAIProjectID(root);if(!scope)return;
- NSArray *sessions=[TFAISessions sessions:scope];
- if(!sessions.count){NSMutableDictionary *fresh=[TFAISessions create:scope title:@"项目开发"];fresh[@"projectName"]=ProjectName(root);fresh[@"projectRoot"]=root;fresh[@"storageProjectID"]=scope;NSError *error=nil;if(![TFAISessions save:fresh project:scope error:&error]){Message(host,@"会话未创建",error.localizedDescription);return;}[TFAIISHRuntime.shared configureSessionTitle:fresh[@"title"] session:fresh[@"id"]];[host.navigationController pushViewController:TFAIISHTerminalControllerWithRoot(fresh[@"id"],root) animated:YES];return;}
- if(sessions.count==1){[TFAIISHRuntime.shared configureSessionTitle:sessions.firstObject[@"title"] session:sessions.firstObject[@"id"]];[host.navigationController pushViewController:TFAIISHTerminalControllerWithRoot(sessions.firstObject[@"id"],root) animated:YES];return;}
- UIAlertController *sheet=[UIAlertController alertControllerWithTitle:@"选择项目终端会话" message:@"与该 AI 会话共用 Linux 文件和进程。项目原文件仍通过副本导入和审核写回。" preferredStyle:UIAlertControllerStyleActionSheet];
- for(NSDictionary *record in sessions){[sheet addAction:[UIAlertAction actionWithTitle:record[@"title"]?:@"未命名会话" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){[TFAIISHRuntime.shared configureSessionTitle:record[@"title"] session:record[@"id"]];[host.navigationController pushViewController:TFAIISHTerminalControllerWithRoot(record[@"id"],root) animated:YES];}]];}
- [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];sheet.popoverPresentationController.sourceView=host.view;sheet.popoverPresentationController.sourceRect=CGRectMake(host.view.bounds.size.width-50,host.view.safeAreaInsets.top,1,1);[host presentViewController:sheet animated:YES completion:nil];
-
+ NSString *scope=ProjectTerminalSession(root);if(!scope)return;
+ [TFAIISHRuntime.shared configureSessionTitle:ProjectName(root) session:scope];
+ [host.navigationController pushViewController:TFAIISHTerminalControllerWithRoot(scope,root) animated:YES];
 }
 #include "ProjectWorkspace.inc"
 
@@ -1402,7 +1403,7 @@ NSArray<NSDictionary *> *TFAIInternalProjects(void) {
   if([name hasPrefix:@"."]||([base isEqual:Docs()]&&![name hasPrefix:@"Imported-"]))continue;
   NSString *root=Child(base,name);NSDictionary *a=root?[fm attributesOfItemAtPath:root error:nil]:nil;
   if(![a[NSFileType] isEqual:NSFileTypeDirectory])continue;
-  NSString *identifier=TFAIProjectID(root);if(!identifier)continue;
+  NSString *identifier=ProjectTerminalSession(root);if(!identifier)continue;
   [items addObject:@{@"id":identifier,@"name":ProjectName(root),@"root":root}];
  }
  return [items sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a,NSDictionary *b){return [a[@"name"] localizedStandardCompare:b[@"name"]];}];
@@ -1421,7 +1422,7 @@ static void AIWorkspaceTool(NSMutableDictionary *owner,NSString *tool,NSDictiona
  else {BOOL ok=NO;if([tool isEqual:@"clone_project"]){NSURLComponents *url=[NSURLComponents componentsWithString:args[@"url"]];if([url.scheme.lowercaseString isEqual:@"https"]&&url.host.length&&!url.user&&!url.password&&!url.query&&!url.fragment){TMCGitService *git=[[TMCGitService alloc]initWithRoot:temp];dispatch_sync(dispatch_get_main_queue(),^{owner[@"workspaceGit"]=git;git.cancelled=progress.cancelled;});ok=[git cloneURL:args[@"url"] error:&error];if(ok)ok=TMCPrepareImportedProject(temp,name,&error)!=nil;}else error=[NSError errorWithDomain:@"AI.Workspace" code:5 userInfo:@{NSLocalizedDescriptionKey:@"仓库地址须为不含凭据的 HTTPS URL"}];}
  else {NSString *kind=args[@"template"];if([@[@"logos",@"objectivec",@"dylib"] containsObject:kind]){NSString *resource=[kind isEqual:@"logos"]?@"SampleProject":@"SampleObjectiveC";ok=[NSFileManager.defaultManager copyItemAtPath:[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:resource] toPath:temp error:&error];if(ok){NSMutableDictionary *config=[Config(temp) mutableCopy]?:[NSMutableDictionary new];config[@"name"]=name;config[@"productName"]=@"WorkbenchTweak";config[@"sources"]=[kind isEqual:@"logos"]?@[@"Tweak.xm"]:@[@"Test.m"];config[@"frameworks"]=[kind isEqual:@"logos"]?@[@"Foundation",@"UIKit",@"CydiaSubstrate"]:@[@"Foundation",@"UIKit"];if([kind isEqual:@"dylib"])config[@"package"]=@NO;ok=JSONWrite(config,[temp stringByAppendingPathComponent:@"MobileCompiler.json"],&error);}}else error=[NSError errorWithDomain:@"AI.Workspace" code:6 userInfo:@{NSLocalizedDescriptionKey:@"请选择有效模板"}];}
  if(progress.cancelled){ok=NO;error=[NSError errorWithDomain:NSCocoaErrorDomain code:NSUserCancelledError userInfo:@{NSLocalizedDescriptionKey:@"项目操作已取消"}];}if(ok)ok=[NSFileManager.defaultManager moveItemAtPath:temp toPath:root error:&error];if(!ok){[NSFileManager.defaultManager removeItemAtPath:temp error:nil];if(!error)error=[NSError errorWithDomain:@"AI.Workspace" code:7 userInfo:@{NSLocalizedDescriptionKey:@"项目创建失败"}];}else MarkSaved(root);}}
- dispatch_async(dispatch_get_main_queue(),^{if(owner[@"workspaceProgress"]==progress){[owner removeObjectForKey:@"workspaceGit"];[owner removeObjectForKey:@"workspaceProgress"];}if(error||progress.cancelled){completion(nil,error?:[NSError errorWithDomain:NSCocoaErrorDomain code:NSUserCancelledError userInfo:nil]);return;}StudioEditor *editor=[StudioEditor new];editor.root=root;[editor loadViewIfNeeded];owner[@"editor"]=editor;completion(@{@"root":root,@"projectID":TFAIProjectID(root),@"name":name?:root.lastPathComponent},nil);});
+ dispatch_async(dispatch_get_main_queue(),^{if(owner[@"workspaceProgress"]==progress){[owner removeObjectForKey:@"workspaceGit"];[owner removeObjectForKey:@"workspaceProgress"];}if(error||progress.cancelled){completion(nil,error?:[NSError errorWithDomain:NSCocoaErrorDomain code:NSUserCancelledError userInfo:nil]);return;}StudioEditor *editor=[StudioEditor new];editor.root=root;[editor loadViewIfNeeded];owner[@"editor"]=editor;completion(@{@"root":root,@"projectID":ProjectTerminalSession(root),@"name":name?:root.lastPathComponent},nil);});
  });
 }
 // Remote uses these adapters instead of duplicating Studio project/build behavior.

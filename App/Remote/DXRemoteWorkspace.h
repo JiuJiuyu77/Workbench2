@@ -1,5 +1,5 @@
 #import <Foundation/Foundation.h>
-#import "../AI/AIContracts.h"
+#import "../Runtime/Contracts.h"
 // Shared Studio adapters. They call the same editor/workspace entry points as native AI.
 void DXStudioWorkspace(NSMutableDictionary *owner,NSString *tool,NSDictionary *arguments,TFAIResult completion);
 NSDictionary *DXStudioWorkspaceState(NSMutableDictionary *owner);

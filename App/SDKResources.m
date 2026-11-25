@@ -1,6 +1,6 @@
 #import "SDKResources.h"
 #import "ArchiveImport.h"
-#import "AI/Resources/DXResourceStore.h"
+#import "Runtime/Resources/DXResourceStore.h"
 #import <CommonCrypto/CommonDigest.h>
 
 static NSError *SDKError(NSString *message){return [NSError errorWithDomain:@"WorkbenchSDK" code:4 userInfo:@{NSLocalizedDescriptionKey:message}];}

@@ -139,8 +139,7 @@ NSDictionary *TMCStorageCleanItems(NSDictionary *snapshot,NSArray *items,NSError
 
 #if __has_include(<UIKit/UIKit.h>) && !defined(TMC_STORAGE_TEST)
 #import "GitPreferences.h"
-#import "AI/Sandbox/TFAIISHEnvironmentUI.h"
-extern BOOL TFAIHasLiveRuns(void);
+#import "Runtime/Sandbox/TFAIISHEnvironmentUI.h"
 extern BOOL TFAIClassDumpIsActive(void);
 static NSString *Bytes(unsigned long long size){return size?[NSByteCountFormatter stringFromByteCount:size countStyle:NSByteCountFormatterCountStyleFile]:@"0 KB";}
 static UIViewController *StorageBrowser(NSDictionary *,NSString *,NSString *,NSMutableDictionary *,void(^)(void));
@@ -217,10 +216,10 @@ static UIViewController *StorageBrowser(NSDictionary *,NSString *,NSString *,NSM
  UIAlertController *alert=[UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"清理约 %@？",Bytes(self.selectedBytes)] message:[[lines componentsJoinedByString:@"\n\n"] stringByAppendingString:@"\n\n这些内容将直接删除，请确认已保存需要的文件。"] preferredStyle:UIAlertControllerStyleAlert];[alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[alert addAction:[UIAlertAction actionWithTitle:@"确认清理" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *a){[self clean];}]];[self presentViewController:alert animated:YES completion:nil];
 }
 - (void)clean{
- if(TFAIHasLiveRuns()||TFAIClassDumpIsActive()||[TMCGitLease hasActiveBuilds]){[self message:@"有任务正在处理" text:@"请等待构建、头文件导出或 AI 任务完成后再清理。"];return;}
+ if(TFAIClassDumpIsActive()||[TMCGitLease hasActiveBuilds]){[self message:@"有任务正在处理" text:@"请等待构建或头文件导出完成后再清理。"];return;}
  self.working=YES;self.cleaning=YES;self.cleanProgress=[NSProgress progressWithTotalUnitCount:1];[self updateButton];UIActivityIndicatorView *spinner=[[UIActivityIndicatorView alloc]initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];[spinner startAnimating];self.navigationItem.titleView=spinner;NSDictionary *snapshot=self.snapshot;NSSet *selected=[self.selected copy];NSMutableArray *items=[self.selectedItems.allValues mutableCopy];for(NSDictionary *root in snapshot[@"entries"])if([selected containsObject:root[@"category"]])[items addObject:root];
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{@autoreleasepool{
- TMCGitLease *lease __attribute__((objc_precise_lifetime))=[TMCGitLease tryWrite];NSError *error=nil;NSDictionary *result=nil;if(!lease||TFAIHasLiveRuns()||TFAIClassDumpIsActive()||[TMCGitLease hasActiveBuilds])error=SE(@"Git、构建或 AI 任务正在处理，请稍后再试。");else result=TMCStorageCleanItemsProgress(snapshot,items,self.cleanProgress,^(NSDictionary *state){dispatch_async(dispatch_get_main_queue(),^{[self.cleanButton setTitle:[NSString stringWithFormat:@"%@ · %@/%@ · 点此停止",state[@"stage"],state[@"completed"],state[@"total"]] forState:UIControlStateNormal];});},&error);
+ TMCGitLease *lease __attribute__((objc_precise_lifetime))=[TMCGitLease tryWrite];NSError *error=nil;NSDictionary *result=nil;if(!lease||TFAIClassDumpIsActive()||[TMCGitLease hasActiveBuilds])error=SE(@"Git、构建或 AI 任务正在处理，请稍后再试。");else result=TMCStorageCleanItemsProgress(snapshot,items,self.cleanProgress,^(NSDictionary *state){dispatch_async(dispatch_get_main_queue(),^{[self.cleanButton setTitle:[NSString stringWithFormat:@"%@ · %@/%@ · 点此停止",state[@"stage"],state[@"completed"],state[@"total"]] forState:UIControlStateNormal];});},&error);
  dispatch_async(dispatch_get_main_queue(),^{self.navigationItem.titleView=nil;self.cleaning=NO;self.working=NO;[self scan];[self message:[result[@"cancelled"] boolValue]?@"清理已停止":error?@"清理未全部完成":@"清理完成" text:[NSString stringWithFormat:@"已释放约 %@\n%@",Bytes([result[@"removed"] unsignedLongLongValue]),error.localizedDescription?:@"保留内容未作更改。"]];});}});
 }
 @end

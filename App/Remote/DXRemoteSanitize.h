@@ -1,5 +1,5 @@
 #import <Foundation/Foundation.h>
-#import "../AI/Permissions/TFAIPolicy.h"
+#import "../Runtime/Permissions/TFAIPolicy.h"
 
 // Credential names are case/separator independent. Do not match "token" as a
 // substring: inputTokens, tokenUsage and cachedTokens are ordinary usage data.

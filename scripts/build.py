@@ -288,7 +288,7 @@ if ish_enabled:
         shutil.copy2(manifest_path, app / 'iSH/runtime-manifest.json')
 else:
     cmd.append('-DWORKBENCH_HAS_ISH=0')
-cmd.extend(str(p) for p in sorted((ROOT / 'App/AI').rglob('*.m')))
+cmd.extend(str(p) for p in sorted((ROOT / 'App/Runtime').rglob('*.m')))
 if args.simulator:
     for regression in ['Integration165IOSRegression.m', 'AgentIOSRegression.m', 'ToolRegistryIOSRegression.m']:
         source = ROOT / 'tests' / regression
