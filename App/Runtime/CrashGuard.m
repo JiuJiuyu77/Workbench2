@@ -70,8 +70,9 @@ static void WBSignalHandler(int signalNumber) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         NSSetUncaughtExceptionHandler(&WBExceptionHandler);
-        for (int number in (int[]){SIGABRT, SIGBUS, SIGSEGV, SIGILL, SIGFPE, SIGTRAP}) {
-            signal(number, WBSignalHandler);
+        int watched[] = {SIGABRT, SIGBUS, SIGSEGV, SIGILL, SIGFPE, SIGTRAP};
+        for (size_t i = 0; i < sizeof(watched) / sizeof(watched[0]); i++) {
+            signal(watched[i], WBSignalHandler);
         }
         // 记录一次正常启动，方便区分「启动前」还是「运行中」崩溃。
         WBAppend([NSString stringWithFormat:@"\n===== %@ launch uid=%d pid=%d =====\n",
