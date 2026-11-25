@@ -47,3 +47,41 @@ NSDictionary *DXAppUpdateFromHTML(NSString *html,NSURL *page,NSError **error){
  if(release)self.latestRelease=release;NSArray *callbacks=self.callbacks.copy;self.callbacks=nil;self.checking=NO;self.data=nil;[session finishTasksAndInvalidate];self.session=nil;for(void(^callback)(NSDictionary *,NSError *) in callbacks)callback(release,failure);
 }
 @end
+
+#if __has_include(<UIKit/UIKit.h>)
+// 更新提示的最小实现：不自动联网，只在用户点「检查更新」时查询并展示结果。
+// 说明页入口保留（官网链接由 DXAppUpdateFromHTML 解析到的地址决定）。
+void DXAppUpdatePresent(UIViewController *host, BOOL manual) {
+    if (!host) return;
+    NSString *installed = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"1.0.0";
+    [[DXAppUpdate shared] check:^(NSDictionary *release, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSString *title = error ? @"检查更新失败" : ([release[@"version"] length] ? @"发现新版本" : @"已是最新");
+            NSString *message = error.localizedDescription;
+            if (!message.length) {
+                message = [release[@"version"] length]
+                    ? [NSString stringWithFormat:@"当前 %@，最新 %@\n%@", installed, release[@"version"], release[@"notes"] ?: @""]
+                    : [NSString stringWithFormat:@"当前 %@ 已是最新版本。", installed];
+            }
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            if ([release[@"url"] isKindOfClass:NSString.class]) {
+                [alert addAction:[UIAlertAction actionWithTitle:@"打开下载页" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+                    [UIApplication.sharedApplication openURL:[NSURL URLWithString:release[@"url"]] options:@{} completionHandler:nil];
+                }]];
+            }
+            [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+            [host presentViewController:alert animated:YES completion:nil];
+        });
+    }];
+}
+
+void DXAppUpdateOnLaunch(UIViewController *root) {
+    // 启动不自动联网检查：保持离线可用，避免冷启动被网络阻塞。
+    (void)root;
+}
+
+UIViewController *DXAppUpdateWebsite(void) {
+    return nil;
+}
+#endif

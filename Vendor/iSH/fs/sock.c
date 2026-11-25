@@ -21,7 +21,7 @@
 #define SOCKET_TYPE_MASK 0xf
 
 // Dylix integration: observe real listeners, never infer readiness from stdout.
-#ifdef DYLIX_EMBEDDED_SANDBOX
+#if defined(DYLIX_EMBEDDED_SANDBOX) || defined(WORKBENCH_EMBEDDED_SANDBOX)
 void (*workbench_listener_hook)(uint64_t,int,unsigned,bool);
 static int dylix_loopback_address(struct sockaddr *address) {
     if (address->sa_family == AF_INET) {
@@ -685,7 +685,7 @@ int_t sys_bind(fd_t sock_fd, addr_t sockaddr_addr, uint_t sockaddr_len) {
     if (err < 0)
         return err;
 
-#ifdef DYLIX_EMBEDDED_SANDBOX
+#if defined(DYLIX_EMBEDDED_SANDBOX) || defined(WORKBENCH_EMBEDDED_SANDBOX)
     // Wildcard dev servers are confined to the local device, never the LAN.
     if (current->group->fs_context && (sock->socket.type & SOCKET_TYPE_MASK) == SOCK_STREAM_ && dylix_loopback_address((void *)&sockaddr) < 0)
         return _EPERM;
@@ -765,7 +765,7 @@ int_t sys_listen(fd_t sock_fd, int_t backlog) {
     struct fd *sock = sock_getfd(sock_fd);
     if (sock == NULL)
         return _EBADF;
-#ifdef DYLIX_EMBEDDED_SANDBOX
+#if defined(DYLIX_EMBEDDED_SANDBOX) || defined(WORKBENCH_EMBEDDED_SANDBOX)
     // listen() can auto-bind: explicitly constrain that path as well.
     if (current->group->fs_context && (sock->socket.domain == AF_INET_ || sock->socket.domain == AF_INET6_)) {
         struct sockaddr_storage local; socklen_t size = sizeof(local);
@@ -780,7 +780,7 @@ int_t sys_listen(fd_t sock_fd, int_t backlog) {
     int err = listen(sock->real_fd, backlog);
     if (err < 0)
         return errno_map();
-#ifdef DYLIX_EMBEDDED_SANDBOX
+#if defined(DYLIX_EMBEDDED_SANDBOX) || defined(WORKBENCH_EMBEDDED_SANDBOX)
     if (current->group->fs_context && workbench_listener_hook) {
         struct sockaddr_storage local; socklen_t size = sizeof(local);
         if (getsockname(sock->real_fd, (void *)&local, &size) == 0) {
@@ -2035,7 +2035,7 @@ static ssize_t sock_write(struct fd *fd, const void *buf, size_t size) {
 }
 
 static int sock_close(struct fd *fd) {
-#ifdef DYLIX_EMBEDDED_SANDBOX
+#if defined(DYLIX_EMBEDDED_SANDBOX) || defined(WORKBENCH_EMBEDDED_SANDBOX)
     if (fd->socket.dylix_listener_context && workbench_listener_hook)
         workbench_listener_hook(fd->socket.dylix_listener_context, fd->real_fd, fd->socket.dylix_listener_port, false);
 #endif

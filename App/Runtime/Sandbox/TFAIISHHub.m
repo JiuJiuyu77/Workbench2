@@ -23,7 +23,7 @@
 - (void)viewDidDisappear:(BOOL)animated{[super viewDidDisappear:animated];[self.statusTimer invalidate];self.statusTimer=nil;}
 - (void)refreshTools{if(self.busy)return;self.busy=YES;__weak typeof(self) weak=self;[TFAIISHRuntime.shared toolInventory:self.session completion:^(NSDictionary *inventory){dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{BOOL sdkCached=[DXResourceStore verifiedPath:@"sdk26" error:nil]!=nil;dispatch_async(dispatch_get_main_queue(),^{typeof(self) page=weak;if(!page)return;NSMutableDictionary *all=[inventory mutableCopy];all[@"sdkCached"]=@(sdkCached);page.toolInventory=all;page.busy=NO;[page updateBatchButton];[page.tableView reloadData];});});}];}
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table{return self.tools?3:1;}
-- (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{return self.tools?(s==0?DXLinuxPackages().count:2):3;}
+- (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{return self.tools?(s==0?DXLinuxPackages().count:2):2;}
 - (NSString *)tableView:(UITableView *)t titleForHeaderInSection:(NSInteger)s{return self.tools?@[@"开发工具 · 单独安装",@"离线完整套件",@"iOS 编译 SDK"][s]:nil;}
 - (BOOL)sdkInstalled{return TMCSDKIsInstalled(NSBundle.mainBundle,NSSearchPathForDirectoriesInDomains(NSCachesDirectory,NSUserDomainMask,YES).firstObject,@"26.0");}
 - (void)updateBatchButton{NSDictionary *s=[DXLinuxToolBatch.shared status:self.session];BOOL active=[s[@"running"] boolValue];self.navigationItem.rightBarButtonItem.title=active?[NSString stringWithFormat:@"安装 %lu/%lu",(unsigned long)([s[@"index"] unsignedIntegerValue]+1),(unsigned long)[s[@"items"] count]]:@"全部安装";self.navigationItem.rightBarButtonItem.enabled=active||self.toolInventory!=nil;if(active){self.navigationItem.prompt=[NSString stringWithFormat:@"%@ · %@",[s[@"cancelled"] boolValue]?@"等待当前任务完成后停止":@"正在顺序安装",s[@"current"]?:@""];}else self.navigationItem.prompt=[s[@"failed"] unsignedIntegerValue]?[NSString stringWithFormat:@"安装结束 · %@ 项失败，可点对应项目重试",s[@"failed"]]:[s[@"cancelled"] boolValue]?@"已停止后续安装":s[@"items"]?@"全部安装任务已完成":nil;}
@@ -68,7 +68,7 @@
 }
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)i{
  [t deselectRowAtIndexPath:i animated:YES];
- if(!self.tools){UIViewController *page=i.row==0?TFAIISHMirrorController(self.session):i.row==1?TFAIISHRootCatalogController(self.session):TFAIISHEnvironmentController(self.session,self.root);[self.navigationController pushViewController:page animated:YES];return;}
+ if(!self.tools){UIViewController *page=i.row==0?TFAIISHMirrorController(self.session):TFAIISHEnvironmentController(self.session,self.root);[self.navigationController pushViewController:page animated:YES];return;}
  if([[DXLinuxToolBatch.shared status:self.session][@"running"] boolValue]){AIAlert(self,@"正在批量安装",@"请等待全部安装完成，或点击右上角停止后续安装。");return;}
  if(i.section==0){NSDictionary *p=DXLinuxPackages()[i.row],*row=self.toolInventory[p[@"id"]];if([@[@"installing",@"uninstalling",@"checking"] containsObject:row[@"state"]]){if([row[@"process_id"] length])[self.navigationController pushViewController:TFAIISHProcessController(self.session,row[@"process_id"]) animated:YES];return;}
  UIAlertController *a=[UIAlertController alertControllerWithTitle:p[@"title"] message:row[@"error"]?:@"工具保存在 Linux 环境中。所有 AI 和终端共用；同一 App 保留数据覆盖安装后继续可用；卸载影响所有会话，仅移除本页管理的安装，仍被其他工具依赖时会保留。" preferredStyle:UIAlertControllerStyleActionSheet];
