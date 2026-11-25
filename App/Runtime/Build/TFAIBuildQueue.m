@@ -4,7 +4,6 @@
 extern BOOL TMCBuildIsRunning(void);
 #import "../Background/TFAIBackground.h"
 #import "../Background/TFAINotifications.h"
-#import "../LiveActivity/TFAILiveActivity.h"
 #import "../UIHelpers.h"
 NSError *TFAIError(NSInteger code, NSString *message){
     return [NSError errorWithDomain:@"Workbench.BuildQueue" code:code

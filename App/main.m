@@ -32,6 +32,7 @@ static void TMCLog(FILE *stream, const char *format, ...) {
  NSDateFormatter *formatter=[NSDateFormatter new];formatter.locale=[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];formatter.dateFormat=@"HH:mm:ss.SSS";NSString *stamp=[formatter stringFromDate:NSDate.date];[message enumerateSubstringsInRange:NSMakeRange(0,message.length) options:NSStringEnumerationByLines usingBlock:^(NSString *line,NSRange range,NSRange enclosing,BOOL *stop){fprintf(stream,"[%s] %s\n",stamp.UTF8String,line.UTF8String);}];fflush(stream);
 }
 
+static void TMCMarkStartup(NSString *stage);
 static BOOL TMCBuildRunning = NO;
 BOOL TMCBuildIsRunning(void){NSCAssert(NSThread.isMainThread,@"Main-thread build state");return TMCBuildRunning;}
 

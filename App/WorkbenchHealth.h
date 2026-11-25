@@ -59,4 +59,7 @@ typedef NS_ENUM(NSInteger, WBHealthLevel) {
 /// 自检界面（列表展示，点击行查看修复建议）
 UIViewController *WBHealthController(void);
 
+/// 用内置工具链编译一个最小 Theos 样例；结果以弹窗展示（工作台/自检页共用）。
+void WBHealthRunQuickBuild(UIViewController *host);
+
 NS_ASSUME_NONNULL_END

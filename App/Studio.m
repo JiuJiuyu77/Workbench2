@@ -8,6 +8,7 @@
 #import "Runtime/Build/TFAIBuildCache.h"
 #import "ArchiveImport.h"
 #import "StorageSpace.h"
+#import "WBWorkbenchController.h"
 #import "Runtime/Sandbox/TFAIISHTerminal.h"
 #import "Runtime/Sandbox/TFAIISHRuntime.h"
 #import "Remote/DXRemoteService.h"
@@ -1485,8 +1486,9 @@ NSDictionary *DXStudioWorkspaceState(NSMutableDictionary *owner){
 @end
 UIViewController *TMCStudioRoot(void) {
  TFStudioTabs *tabs=[TFStudioTabs new];TFWorkspaceListNavigation *projects=[[TFWorkspaceListNavigation alloc] initWithRootViewController:[[StudioHome alloc] initWithStyle:UITableViewStyleGrouped]];
+ TMCNavigationController *workbench=(TMCNavigationController *)WBWorkbenchController();
  TMCNavigationController *settings=[[TMCNavigationController alloc] initWithRootViewController:[[StudioSettings alloc] initWithStyle:UITableViewStyleInsetGrouped]];
- [projects.topViewController loadViewIfNeeded];[settings.topViewController loadViewIfNeeded];projects.tabBarItem=[[UITabBarItem alloc] initWithTitle:@"项目" image:[UIImage systemImageNamed:@"square.stack.3d.up"] tag:0];settings.tabBarItem=[[UITabBarItem alloc] initWithTitle:@"设置" image:[UIImage systemImageNamed:@"slider.horizontal.3"] tag:1];tabs.viewControllers=@[TFAdaptiveWorkspace(projects),settings];return tabs;
+ [projects.topViewController loadViewIfNeeded];[workbench.topViewController loadViewIfNeeded];[settings.topViewController loadViewIfNeeded];projects.tabBarItem=[[UITabBarItem alloc] initWithTitle:@"项目" image:[UIImage systemImageNamed:@"square.stack.3d.up"] tag:0];workbench.tabBarItem=[[UITabBarItem alloc] initWithTitle:@"工作台" image:[UIImage systemImageNamed:@"square.grid.2x2"] tag:1];settings.tabBarItem=[[UITabBarItem alloc] initWithTitle:@"设置" image:[UIImage systemImageNamed:@"slider.horizontal.3"] tag:2];tabs.viewControllers=@[TFAdaptiveWorkspace(projects),workbench,settings];return tabs;
 }
 UIViewController *TMCStudioHome(void){return [[StudioHome alloc] initWithStyle:UITableViewStyleGrouped];}
 #if TARGET_OS_SIMULATOR

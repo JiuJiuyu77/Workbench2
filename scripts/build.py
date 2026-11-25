@@ -183,7 +183,6 @@ info = {
     'CFBundleURLTypes': [{'CFBundleURLName':'Workbench Incoming','CFBundleURLSchemes':['workbench', 'workbench']}],
     'BGTaskSchedulerPermittedIdentifiers': ['com.HuQing.Workbench.ai.processing'],
     'UIBackgroundModes': ['processing', 'audio'],
-    'NSSupportsLiveActivities': True,
     'UIApplicationSceneManifest': {
         'UIApplicationSupportsMultipleScenes': False,
         'UISceneConfigurations': {
@@ -239,7 +238,7 @@ subprocess.run(['python3', str(ROOT / 'scripts/build_classdump.py'), '--platform
 cmd = ['xcrun', '--sdk', sdk, 'clang', '-arch', arch, '-isysroot', sysroot,
        '-mios-simulator-version-min=15.0' if args.simulator else '-miphoneos-version-min=15.0',
        '-fobjc-arc', '-fmodules', '-DNS_BLOCK_ASSERTIONS=1', '-framework', 'Network', '-framework', 'CoreImage', '-I' + str(ROOT / 'Vendor/libgit2/include'), '-weak_framework', 'BackgroundTasks', '-framework', 'AVFoundation', '-framework', 'UserNotifications', '-framework', 'AuthenticationServices', '-framework', 'Security', '-framework', 'CoreFoundation', '-liconv', '-framework', 'UIKit', '-framework', 'CoreGraphics', '-framework', 'QuartzCore', '-framework', 'Foundation', '-framework', 'UniformTypeIdentifiers', '-framework', 'WebKit', '-framework', 'JavaScriptCore', '-larchive',
-       str(ROOT / 'App/main.m'), str(ROOT / 'App/RuntimeDiagnostics.m'), str(ROOT / 'App/WorkbenchHealth.m'), str(ROOT / 'App/WBTheosToolsController.m'), str(ROOT / 'App/WBToolsController.m'), str(ROOT / 'App/WBReverseController.m'), str(ROOT / 'App/WBRemoteController.m'), str(ROOT / 'App/SPJIT.m'), str(ROOT / 'App/SPJITService.m'), str(ROOT / 'App/SPDiagnostics.m'), str(ROOT / 'App/SPHeaderExport.m'), str(ROOT / 'App/SPRemoteServer.m'), str(ROOT / 'App/SPCompat.m'), str(ROOT / 'App/SPModels.m'), str(ROOT / 'App/SPSession.m'), str(ROOT / 'App/SPAOJIT.m'), str(ROOT / 'App/SPStore.m'), str(ROOT / 'App/SPOutputNaming.m'), str(ROOT / 'App/SPToolchain.m'), str(ROOT / 'App/SPToolchainInstaller.m'), str(ROOT / 'App/SPToolchainDownloader.m'), str(ROOT / 'App/SPProcessGuard.m'), str(ROOT / 'App/SPNetworkMonitor.m'), str(ROOT / 'App/SPBuilder.m'), str(ROOT / 'App/SPIShell.m'), str(ROOT / 'App/SPTrollStoreFix.m'), str(ROOT / 'App/WBCloudBuild.m'), str(ROOT / 'App/ArchiveImport.m'), str(ROOT / 'App/TheosMakefile.m'), str(ROOT / 'App/DebPackage.m'), str(ROOT / 'App/OutputNaming.m'), str(ROOT / 'App/CompatibilityRepair.m'), str(ROOT / 'App/Studio.m'), str(ROOT / 'App/StorageSpace.m'), str(ROOT / 'App/ProjectSafety.m'), str(ROOT / 'App/ProjectTrash.m'), str(ROOT / 'App/GlassSupport.m'), str(ROOT / 'App/GitService.m'), str(ROOT / 'App/GitUI.m'), str(ROOT / 'App/GitHubRepositories.m'), str(ROOT / 'App/GitPATGuide.m'), str(ROOT / 'App/LinkSupport.m'), str(ROOT / 'App/HelpArticle.m'), str(ROOT / 'App/GitAutomation.m'), str(ROOT / 'App/GitDiffView.m'), str(gitlib), str(ROOT / 'Vendor/MBProgressHUD/MBProgressHUD.m'), '-o', str(app / 'Workbench')]
+       str(ROOT / 'App/main.m'), str(ROOT / 'App/RuntimeDiagnostics.m'), str(ROOT / 'App/WorkbenchHealth.m'), str(ROOT / 'App/WBTheosToolsController.m'), str(ROOT / 'App/WBToolsController.m'), str(ROOT / 'App/WBReverseController.m'), str(ROOT / 'App/WBRemoteController.m'), str(ROOT / 'App/SPJIT.m'), str(ROOT / 'App/SPJITService.m'), str(ROOT / 'App/SPDiagnostics.m'), str(ROOT / 'App/SPHeaderExport.m'), str(ROOT / 'App/SPRemoteServer.m'), str(ROOT / 'App/SPCompat.m'), str(ROOT / 'App/SPModels.m'), str(ROOT / 'App/SPSession.m'), str(ROOT / 'App/SPAOJIT.m'), str(ROOT / 'App/SPStore.m'), str(ROOT / 'App/SPOutputNaming.m'), str(ROOT / 'App/SPToolchain.m'), str(ROOT / 'App/SPToolchainInstaller.m'), str(ROOT / 'App/SPToolchainDownloader.m'), str(ROOT / 'App/SPProcessGuard.m'), str(ROOT / 'App/SPNetworkMonitor.m'), str(ROOT / 'App/SPBuilder.m'), str(ROOT / 'App/SPIShell.m'), str(ROOT / 'App/SPTrollStoreFix.m'), str(ROOT / 'App/WBCloudBuild.m'), str(ROOT / 'App/WBWorkbenchController.m'), str(ROOT / 'App/ArchiveImport.m'), str(ROOT / 'App/TheosMakefile.m'), str(ROOT / 'App/DebPackage.m'), str(ROOT / 'App/OutputNaming.m'), str(ROOT / 'App/CompatibilityRepair.m'), str(ROOT / 'App/Studio.m'), str(ROOT / 'App/StorageSpace.m'), str(ROOT / 'App/ProjectSafety.m'), str(ROOT / 'App/ProjectTrash.m'), str(ROOT / 'App/GlassSupport.m'), str(ROOT / 'App/GitService.m'), str(ROOT / 'App/GitUI.m'), str(ROOT / 'App/GitHubRepositories.m'), str(ROOT / 'App/GitPATGuide.m'), str(ROOT / 'App/LinkSupport.m'), str(ROOT / 'App/HelpArticle.m'), str(ROOT / 'App/GitAutomation.m'), str(ROOT / 'App/GitDiffView.m'), str(gitlib), str(ROOT / 'Vendor/MBProgressHUD/MBProgressHUD.m'), '-o', str(app / 'Workbench')]
 # iSH host objects are ARM64 only; never link macOS or device archives into a simulator.
 ish_enabled = arch == 'arm64'
 if ish_enabled:
@@ -356,20 +355,15 @@ share_entitlements=ROOT / 'build' / platform / 'share-entitlements.plist'
 share_entitlements.write_bytes(plistlib.dumps(profile_rights[1] if profile_rights else {'com.apple.security.application-groups':['group.com.xuegao.workbench.share']}))
 sign_flags=[] if args.simulator else ['--entitlements',str(share_entitlements)]
 subprocess.run(['codesign','--force','--sign',args.identity,*sign_flags,str(share)],check=True)
-activity_flags=[]
 main_sign_flags=sign_flags
 if profile_rights:
     main_rights=ROOT / 'build' / platform / 'main-entitlements.plist'
-    activity_rights=ROOT / 'build' / platform / 'activity-entitlements.plist'
     main_rights.write_bytes(plistlib.dumps(profile_rights[0]))
-    activity_rights.write_bytes(plistlib.dumps(profile_rights[2]))
     main_sign_flags=['--entitlements',str(main_rights)]
-    activity_flags=['--profile',str(args.activity_profile),'--entitlements',str(activity_rights)]
 elif not args.simulator and APP_ENTITLEMENTS.is_file():
     # 无描述文件的 TrollStore 构建：必须带平台权限，否则装好后没有 root/persona，
     # 工具链子进程与 JIT 都会失败（Work1 同款 entitlements）。
     main_sign_flags=['--entitlements',str(_resolve_entitlements())]
-subprocess.run(['python3',str(ROOT / 'scripts/build_live_activity.py'),'--app',str(app),'--build',info['CFBundleVersion'],'--identity',args.identity,'--bundle-id',args.bundle_id + '.activity']+activity_flags+(['--simulator'] if args.simulator else []),check=True)
 def _fat_archive(path):
     """fat 归档（例如 SDK 的 libc++experimental.a）会让 ldid 报 Unknown header magic。"""
     try:

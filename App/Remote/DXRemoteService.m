@@ -8,7 +8,7 @@
 #import "DXRemoteTLS.h"
 #import "DXRemoteNetwork.h"
 #import "../Runtime/ContractsV2.h"
-#import "../Runtime/Background/TFAIAudioBackground.h"
+#import "../Runtime/Background/WBRemoteAudio.h"
 #import "../GitService.h"
 #import "../SDKResources.h"
 #import <ifaddrs.h>
@@ -84,7 +84,7 @@ static NSDictionary *Error(NSInteger status,NSString *code,NSString *message){re
   [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(background) name:UIApplicationDidEnterBackgroundNotification object:nil];
   [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(protectedChanged:) name:UIApplicationProtectedDataWillBecomeUnavailable object:nil];
   [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(protectedChanged:) name:UIApplicationProtectedDataDidBecomeAvailable object:nil];
-  [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(audioChanged:) name:@"TFAIAudioBackgroundStateChanged" object:nil];
+  [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(audioChanged:) name:@"WBRemoteAudioStateChanged" object:nil];
   _timer=[NSTimer scheduledTimerWithTimeInterval:3 target:self selector:@selector(refresh) userInfo:nil repeats:YES];[self refresh];
  }return self;
 }
@@ -96,7 +96,7 @@ static NSDictionary *Error(NSInteger status,NSString *code,NSString *message){re
 - (void)audioChanged:(NSNotification *)notification{
  if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{[self audioChanged:notification];});return;}
  if(UIApplication.sharedApplication.applicationState==UIApplicationStateActive)return;
- BOOL playing=TFAIAudioBackgroundPlaying(),granted=self.backgroundTask!=UIBackgroundTaskInvalid;
+ BOOL playing=WBRemoteAudioPlaying(),granted=self.backgroundTask!=UIBackgroundTaskInvalid;
  dispatch_async(self.queue,^{
   if(!self.wantsHTTP&&!self.wantsDAV)return;
   if(playing){NSError *error=nil;if([self.state isEqual:@"suspended"]&&self.wantsHTTP){self.state=@"starting";if(![self.server startAddress:self.address port:self.port error:&error])self.state=@"failed";}if([self.davState isEqual:@"suspended"]&&self.wantsDAV){self.davState=@"starting";if(![self.davServer startAddress:self.address port:self.davPort error:&error])self.davState=@"failed";}self.lifecycle=@"background_audio";}
@@ -107,17 +107,17 @@ static NSDictionary *Error(NSInteger status,NSString *code,NSString *message){re
  });
 }
 - (void)backgroundExpired{
- [self endBackgroundGrace];BOOL audio=TFAIAudioBackgroundPlaying();dispatch_async(self.queue,^{if(audio){self.lifecycle=@"background_audio";[self.access record:@"background_grace_ended_audio_active"];}else{[self.server stop];[self.davServer stop];if(self.wantsHTTP)self.state=@"suspended";if(self.wantsDAV)self.davState=@"suspended";self.lifecycle=@"suspended";[self.access record:@"background_suspended"];}[self publish];});
+ [self endBackgroundGrace];BOOL audio=WBRemoteAudioPlaying();dispatch_async(self.queue,^{if(audio){self.lifecycle=@"background_audio";[self.access record:@"background_grace_ended_audio_active"];}else{[self.server stop];[self.davServer stop];if(self.wantsHTTP)self.state=@"suspended";if(self.wantsDAV)self.davState=@"suspended";self.lifecycle=@"suspended";[self.access record:@"background_suspended"];}[self publish];});
 }
 - (void)background{
  if(![@[@"running",@"starting",@"suspended"] containsObject:self.localState[@"state"]]&&![@[@"running",@"starting",@"suspended"] containsObject:self.localState[@"davState"]])return;
- TFAIAudioBackgroundAcquire(@"remote");
+ WBRemoteAudioAcquire(@"remote");
  [self endBackgroundGrace];NSUInteger generation=++self.backgroundGeneration;__weak typeof(self) weak=self;
  self.backgroundTask=[UIApplication.sharedApplication beginBackgroundTaskWithName:@"Workbench Remote transfer" expirationHandler:^{dispatch_async(dispatch_get_main_queue(),^{DXRemoteService *s=weak;if(!s||generation!=s.backgroundGeneration)return;[s backgroundExpired];});}];
- BOOL granted=self.backgroundTask!=UIBackgroundTaskInvalid,audio=TFAIAudioBackgroundPlaying();dispatch_async(self.queue,^{self.lifecycle=audio?@"background_audio":(granted?@"background_grace":@"background_system");[self.access record:@"entered_background"];[self publish];});[self refresh];
+ BOOL granted=self.backgroundTask!=UIBackgroundTaskInvalid,audio=WBRemoteAudioPlaying();dispatch_async(self.queue,^{self.lifecycle=audio?@"background_audio":(granted?@"background_grace":@"background_system");[self.access record:@"entered_background"];[self publish];});[self refresh];
 }
 - (void)foreground{
- TFAIAudioBackgroundRelease(@"remote");[self endBackgroundGrace];[self refresh];
+ WBRemoteAudioRelease(@"remote");[self endBackgroundGrace];[self refresh];
  dispatch_async(self.queue,^{self.lifecycle=@"foreground";NSError *error=nil;
   if([self.state isEqual:@"suspended"]&&self.wantsHTTP){self.state=@"starting";if(![self.server startAddress:self.address port:self.port error:&error])self.state=@"failed";}
   if([self.davState isEqual:@"suspended"]&&self.wantsDAV){self.davState=@"starting";if(![self.davServer startAddress:self.address port:self.davPort error:&error])self.davState=@"failed";}
@@ -144,7 +144,7 @@ static NSDictionary *Error(NSInteger status,NSString *code,NSString *message){re
  NSArray *devices=self.access.devices;NSUInteger online=0;for(NSDictionary *device in devices)if([device[@"online"] boolValue])online++;
  NSDictionary *state=@{@"state":self.state?:@"stopped",@"address":self.address?:@"",@"url":[self.state isEqual:@"running"]?(self.server.origin?:@""):@"",@"port":@(self.port),@"enabled":@(self.wantsHTTP||self.wantsDAV),@"httpEnabled":@(self.wantsHTTP),@"davEnabled":@(self.wantsDAV),@"tls":@NO,@"lifecycle":self.lifecycle?:@"foreground",@"codeMode":self.access.fixedCode?@"fixed":@"random",@"code":self.access.pairingCode?:@"",@"codeExpiry":@(self.access.codeExpiry),@"pending":self.access.pending,@"devices":devices,@"online":@(online),@"logs":self.access.events,@"error":self.failure?:@"",@"webdav":@([self.davState isEqual:@"running"]),@"davState":self.davState?:@"stopped",@"davPort":@(self.davPort),@"davURL":[self.davState isEqual:@"running"]?self.davServer.origin?:@"":@"",@"davProject":self.davProject?:@"",@"davCredential":self.davCredential?:@{},@"davError":self.davError?:@""};
  NSMutableDictionary *published=[state mutableCopy];published[@"networkMode"]=DXRemoteSelectedMode([NSUserDefaults.standardUserDefaults stringForKey:@"WorkbenchRemoteNetworkMode"]);
- dispatch_async(dispatch_get_main_queue(),^{self.localState=published;if(![@[@"running",@"starting",@"suspended"] containsObject:state[@"state"]]&&![@[@"running",@"starting",@"suspended"] containsObject:state[@"davState"]])TFAIAudioBackgroundRelease(@"remote");TFScreenAwakeSet(@"remote",[@[@"running",@"starting"] containsObject:state[@"state"]]||[@[@"running",@"starting"] containsObject:state[@"davState"]]);});
+ dispatch_async(dispatch_get_main_queue(),^{self.localState=published;if(![@[@"running",@"starting",@"suspended"] containsObject:state[@"state"]]&&![@[@"running",@"starting",@"suspended"] containsObject:state[@"davState"]])WBRemoteAudioRelease(@"remote");TFScreenAwakeSet(@"remote",[@[@"running",@"starting"] containsObject:state[@"state"]]||[@[@"running",@"starting"] containsObject:state[@"davState"]]);});
 }
 - (void)start{
  if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive)return;NSString *address=WiFiAddress();

@@ -252,7 +252,7 @@ static void WBHealthAlert(UIViewController *host, NSString *title, NSString *mes
     [host presentViewController:alert animated:YES completion:nil];
 }
 
-static void WBQuickBuild(UIViewController *host) {
+void WBHealthRunQuickBuild(UIViewController *host) {
     SPToolchainInstaller *installer = [SPToolchainInstaller shared];
     if (!installer.isInstalled) {
         WBHealthAlert(host, @"工具链未就绪", @"请先在「设置 → 工具链」完成内置工具链安装。");
@@ -397,7 +397,7 @@ static void WBQuickBuild(UIViewController *host) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (indexPath.section == 2) {
-        if (indexPath.row == 0) WBQuickBuild(self);
+        if (indexPath.row == 0) WBHealthRunQuickBuild(self);
         else { self.report = [WBHealth runChecks]; [self.tableView reloadData]; }
         return;
     }
