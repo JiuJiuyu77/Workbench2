@@ -2,7 +2,8 @@ name: build
 
 # Workbench 2 构建流水线
 #   · 大体积依赖一律在 CI 内下载，不进仓库：
-#       Dylix 工具链（5 个 xcframework，78MB）
+#       Theos 运行时（theos-full + theos-root + helpers，259MB）
+#       OLLVM / 逆向工具（81MB）、Swift 5.9.2（469MB）
 #       iOS 17.0 / 26.5 SDK（按需，运行时下载）
 #   · 内置 16.5 SDK 以 Resources/SDK16.5.tar.gz 随仓库分发（30MB）
 

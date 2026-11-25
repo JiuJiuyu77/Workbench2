@@ -40,6 +40,7 @@ static NSString *projectPath(NSString *root, NSString *relative) {
     NSString *path = [root stringByAppendingPathComponent:relative].stringByStandardizingPath;
     return [path hasPrefix:[base stringByAppendingString:@"/"]] ? path : nil;
 }
+static int runTool(NSArray<NSString *> *arguments, FILE *input, FILE *log);
 #include "SymbolProcessing.inc"
 static NSDictionary *projectConfig(NSString *root) {
     NSData *data = [NSData dataWithContentsOfFile:[root stringByAppendingPathComponent:@"MobileCompiler.json"]];
@@ -60,6 +61,28 @@ static NSArray<NSString *> *sourcePaths(NSString *root) {
 }
 #import "CompilerController.h"
 #import "SPBuilder.h"
+#import "SPCompat.h"
+#import "SPSession.h"
+
+// 工具链子进程执行：符号处理（dsymutil/strip）等仍需要跑真实二进制。
+// 全部经 SPSession 的 posix_spawn + 工具链环境，不再走进程内 ios_system。
+static int runTool(NSArray<NSString *> *arguments, FILE *input, FILE *log) {
+    if (!arguments.count) return 64;
+    NSMutableArray *quoted = [NSMutableArray arrayWithCapacity:arguments.count];
+    for (NSString *argument in arguments) [quoted addObject:[SPUtil shellQuote:argument]];
+    NSDictionary *env = [[SPToolchainInstaller shared] runtimeEnvironment];
+    SPCommandResult *result = [SPSession runSyncShell:[quoted componentsJoinedByString:@" "]
+                                          environment:env
+                                                  cwd:NSTemporaryDirectory()
+                                              timeout:600];
+    if (result.stdoutText.length) fprintf(log, "%s", result.stdoutText.UTF8String);
+    if (result.stderrText.length) fprintf(log, "%s", result.stderrText.UTF8String);
+    fflush(log);
+    (void)input;
+    return result.exitCode;
+}
+
+
 #import "SPModels.h"
 #import "SPToolchain.h"
 #import "SPToolchainInstaller.h"
