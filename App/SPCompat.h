@@ -78,6 +78,11 @@ static inline NSString *SPStr(NSString *_Nullable s) { return s ?: @""; }
 /// 以 shell 安全的方式为单个参数加单引号
 + (NSString *)shellQuote:(NSString *)s;
 
+/// Theos 支持的编译源文件扩展名（不含点，小写）。
++ (NSArray<NSString *> *)sourceExtensions;
+/// pathExtension 是否属于 Theos 源文件。
++ (BOOL)isSourceExtension:(NSString *)extension;
+
 /// 把字典写成 env 风格 "K=V" 数组（值中不会出现换行）
 + (NSArray<NSString *> *)envPairsFromDictionary:(NSDictionary<NSString *, NSString *> *)dict;
 

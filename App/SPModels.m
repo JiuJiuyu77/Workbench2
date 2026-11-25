@@ -411,7 +411,7 @@ static NSArray<NSString *> *SPFlagsForPass(NSString *pass) {
 
     // ---- 扫源码 ----
     NSMutableArray *src = [NSMutableArray array], *hdrs = [NSMutableArray array];
-    NSArray *sourceExts = @[@".x", @".xm", @".m", @".mm", @".c", @".cc", @".cpp", @".swift"];
+    NSArray *sourceExts = @[@".x", @".xm", @".m", @".mm", @".c", @".cc", @".cpp", @".cxx", @".swift", @".metal", @".s"];
     NSArray *headerExts = @[@".h", @".hpp"];
     NSDirectoryEnumerator *e = [fm enumeratorAtPath:self.path];
     NSString *rel;

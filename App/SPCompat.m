@@ -101,6 +101,15 @@ NSArray<NSString *> *SPRecentLogs(NSUInteger limit) {
 
 @implementation SPUtil
 
++ (NSArray<NSString *> *)sourceExtensions {
+    // Theos 的 makefiles 支持这些源码类型（含 Swift / Metal / 汇编）。
+    return @[@"x", @"xm", @"m", @"mm", @"c", @"cc", @"cpp", @"cxx", @"swift", @"metal", @"s"];
+}
+
++ (BOOL)isSourceExtension:(NSString *)extension {
+    return extension.length && [[self sourceExtensions] containsObject:extension.lowercaseString];
+}
+
 + (NSString *)formatDuration:(NSTimeInterval)seconds {
     NSInteger s = (NSInteger)MAX(0, seconds);
     if (s < 3600) return [NSString stringWithFormat:@"%02ld:%02ld", (long)(s / 60), (long)(s % 60)];
