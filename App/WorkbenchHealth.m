@@ -98,33 +98,6 @@ static BOOL WBFileExists(NSString *p) {
 }
 
 /// xcframework 是否包含指定架构切片
-+ (WBHealthItem *)xcframeworkItem:(NSString *)name
-                          sliceDir:(NSString *)slice
-                         required:(BOOL)required {
-    NSString *root = [self resourceRoot];
-    NSString *xf = [root stringByAppendingPathComponent:[NSString stringWithFormat:@"Vendor/%@.xcframework", name]];
-    if (!WBPathIsDir(xf)) {
-        return [WBHealthItem item:[NSString stringWithFormat:@"xcframework.%@", name]
-                            title:[NSString stringWithFormat:@"%@ 框架", name]
-                            level:required ? WBHealthLevelFail : WBHealthLevelWarn
-                           detail:[NSString stringWithFormat:@"缺少 %@.xcframework", name]
-                             hint:@"执行 scripts/fetch_resources.sh 补齐 Vendor 依赖"];
-    }
-    NSString *slicePath = [xf stringByAppendingPathComponent:slice];
-    if (!WBPathIsDir(slicePath)) {
-        return [WBHealthItem item:[NSString stringWithFormat:@"xcframework.%@", name]
-                            title:[NSString stringWithFormat:@"%@ 框架", name]
-                            level:WBHealthLevelFail
-                           detail:[NSString stringWithFormat:@"%@ 缺少 %@ 切片", name, slice]
-                             hint:@"框架包不完整，重新获取 Vendor 依赖"];
-    }
-    return [WBHealthItem item:[NSString stringWithFormat:@"xcframework.%@", name]
-                        title:[NSString stringWithFormat:@"%@ 框架", name]
-                        level:WBHealthLevelOK
-                       detail:[NSString stringWithFormat:@"%@ / %@ 存在", name, slice]
-                         hint:nil];
-}
-
 + (WBHealthReport *)runChecks {
     NSMutableArray<WBHealthItem *> *items = [NSMutableArray array];
     NSString *root = [self resourceRoot];

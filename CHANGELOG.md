@@ -1,3 +1,13 @@
+## 1.2.2 · Build287
+
+1. 删除进程内编译架构：移除 ios_system、LLVM cc1 直调、Logos/perl 进程内预处理；构建统一走内置 Work1 工具链的 Theos/make（`SPBuilder`），工具链未就绪时直接报错，不再静默回退。
+2. 全内置工具链：Theos（theos-full + theos-root + helpers）、OLLVM、逆向工具（r2/r2ghidra/mt-*）、Swift 5.9.2、iOS 16.5 SDK 全部打进 ipa；首次启动无需下载。
+3. 资源清理：删除 clang/libLLVM/lld/perl/ios_system 五个 xcframework、ClangInclude、Perl 模块、SDK.zip、commands.plist；仓库同时移除对应 Vendor 包与 `Resources/{Perl,ClangInclude,Personas,AIProviders,AgentSkills}`。
+4. 反汇编改用工具链自带 `libLLVM-16.dylib`（仅 C API，不再需要 App 内 LLVM 框架）。
+5. AI 层彻底移除：`App/AI` 退出编译，非对话模块迁至 `App/Runtime`；LAN 远程工作台改用非 AI 的本地工具层（`Runtime/Toolbox.m`），`ai_*` 动作统一拒绝。
+6. 新增：`bin/spark-jitd`（TrollStore JIT 授权 helper）、`apple-magnifier://enable-jit` 授权入口、GitHub Actions 云端构建（`WBCloudBuild`）。
+7. CI：LLVM 23 的 lld 拆包探测、meson/ninja、iSH 降级路径、macOS bash 3.2 兼容；工具链内 596 个 Mach-O 逐个 adhoc 签名。
+
 ## 1.2.1 · Build286
 
 1. 彻底移除 AI 对话层：`App/AI`（189 文件）退出编译与仓库，会话、模型服务商、人设、用量、Agent、工具注册与聊天界面全部删除。

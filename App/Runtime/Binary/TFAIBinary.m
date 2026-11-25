@@ -44,7 +44,17 @@ static void *CreateDisasm(void){static void *library;static dispatch_once_t once
  library=dlopen("/Applications/Xcode-16.2.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libLTO.dylib",RTLD_NOW|RTLD_LOCAL);
  void(*init)(void)=library?dlsym(library,"lto_initialize_disassembler"):NULL;if(init)init();
 #else
- library=dlopen([[NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Frameworks/libLLVM.framework/libLLVM"] fileSystemRepresentation],RTLD_NOW|RTLD_LOCAL);
+ // 反汇编引擎：优先用内置 Work1 工具链里的 libLLVM-16.dylib（theos-root 自带），
+ // 其次才是 App 包里可能存在的 libLLVM.framework。进程内 clang/lld 已移除，
+ // 只有 LLVM 的 C API 用于反汇编。
+ NSString *bundle=[NSBundle.mainBundle bundlePath];
+ NSString *tc=[NSBundle.mainBundle pathForResource:@"Toolchain" ofType:nil]?:[bundle stringByAppendingPathComponent:@"Toolchain"];
+ NSArray *candidates=@[
+   [tc stringByAppendingPathComponent:@"theos-root/usr/lib/llvm-16/lib/libLLVM-16.dylib"],
+   [tc stringByAppendingPathComponent:@"usr/lib/llvm-16/lib/libLLVM-16.dylib"],
+   [bundle stringByAppendingPathComponent:@"Frameworks/libLLVM.framework/libLLVM"],
+ ];
+ for(NSString *candidate in candidates){if(![NSFileManager.defaultManager fileExistsAtPath:candidate])continue;library=dlopen(candidate.fileSystemRepresentation,RTLD_NOW|RTLD_LOCAL);if(library)break;}
  for(NSString *s in @[@"LLVMInitializeAArch64TargetInfo",@"LLVMInitializeAArch64Target",@"LLVMInitializeAArch64TargetMC",@"LLVMInitializeAArch64Disassembler"]){void(*f)(void)=library?dlsym(library,s.UTF8String):NULL;if(f)f();}
 #endif
  });return library;}

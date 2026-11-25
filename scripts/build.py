@@ -53,16 +53,15 @@ if app.exists():
     shutil.rmtree(app)
 app.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(ROOT / 'LICENSE', app / 'Dylix-LICENSE.txt')
-frameworks = app / 'Frameworks'
-frameworks.mkdir(exist_ok=True)
 # 内置 SDK 只用于给 Theos 的 Toolchain/sdks 补一份 16.5（见上方 BundledToolchain 段），
 # 不再往 App 里塞 SDK.zip：进程内编译已移除。
 pinned_resources = json.loads((ROOT / 'Resources/DownloadResources.json').read_text())
 pinned_sdk26 = next(row for row in pinned_resources if row['id'] == 'sdk26')
 (app / 'SDK26Resource.plist').write_bytes(plistlib.dumps({'version': '26.0', 'sha256': pinned_sdk26['sha256']}))
-resources = ['CompatibilityRules', 'ThirdPartyNotices', 'GitHelp', 'HelpArticles', 'Editor', 'GitDiff', 'RemoteWeb', 'Personas', 'AIProviders', 'AgentSkills', 'Include', 'SampleProject', 'SampleObjectiveC', 'SampleMultiProject', 'FLEXProject', 'VendorFrameworks', 'Terminal']
+resources = ['CompatibilityRules', 'ThirdPartyNotices', 'GitHelp', 'HelpArticles', 'Editor', 'GitDiff', 'RemoteWeb', 'Include', 'SampleProject', 'SampleObjectiveC', 'SampleMultiProject', 'VendorFrameworks', 'Terminal']
 if args.simulator:
     resources.append('SampleLogosGenerated')
+    resources.append('FLEXProject')
     resources.append('SampleMultiObjectiveC')
 _missing_res = []
 for resource in resources:
@@ -145,7 +144,7 @@ info = {
     'CFBundleExecutable': 'Workbench', 'CFBundleIdentifier': args.bundle_id,
     'CFBundleName': 'Workbench', 'CFBundleDisplayName': 'Workbench',
     'CFBundleDevelopmentRegion': 'zh-Hans', 'CFBundleLocalizations': ['zh-Hans', 'en'],
-    'NSCameraUsageDescription': '拍摄照片作为您选择发送给模型的参考附件。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.2.2', 'CFBundleVersion': '287', 'WorkbenchEdition': 'opensource',
+    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.2.2', 'CFBundleVersion': '287', 'WorkbenchEdition': 'opensource',
     'CFBundleDocumentTypes': [{'CFBundleTypeName':'Workbench Files','CFBundleTypeRole':'Editor','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','public.archive','public.source-code']}],
     'CFBundleURLTypes': [{'CFBundleURLName':'Workbench Incoming','CFBundleURLSchemes':['workbench', 'workbench']}],
     'BGTaskSchedulerPermittedIdentifiers': ['com.HuQing.Workbench.ai.processing'],
@@ -163,7 +162,7 @@ info = {
     },
     'MinimumOSVersion': '15.0', 'UIDeviceFamily': [1, 2],
     'NSAppTransportSecurity': {'NSAllowsArbitraryLoads': True},
-    'NSLocalNetworkUsageDescription': '在你开启局域网远程工作台或配置局域网 AI 服务时，允许同一 Wi-Fi 中经你配对的设备访问。',
+    'NSLocalNetworkUsageDescription': '开启局域网远程工作台时，允许同一 Wi-Fi 中经你配对的设备访问。',
     'UILaunchScreen': {}, 'UIFileSharingEnabled': True, 'LSSupportsOpeningDocumentsInPlace': True,
     'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
     'CFBundleSupportedPlatforms': ['iPhoneSimulator' if args.simulator else 'iPhoneOS'],
