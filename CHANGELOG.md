@@ -1,3 +1,8 @@
+## 1.2.5 · Build290
+
+1. 体积优化（不改变内置内容）：裁剪 Theos 包里的 docs/tests/examples/.git，删除 Swift 工具链中构建用不到的 SIL 调试工具（sil-opt / sil-nm / sil-llvm-gen / sil-func-extractor / sil-passpipeline-dumper，单个约 100–155MB）、sourcekitd、lldb，并把 OLLVM 的 clang++ 改成指向 clang 的符号链接。
+2. 其余内置内容不变：Theos、OLLVM、逆向工具、Swift 5.9.2、iPhoneOS 16.5 SDK 仍随包离线可用。
+
 ## 1.2.4 · Build289
 
 1. 修复：`Resources/RemoteWeb`（局域网编辑器）与 `Resources/FLEXProject`（FLEX 示例工程）此前被 .gitignore 排除，CI 构建一直缺失；现已纳入仓库并随包分发。

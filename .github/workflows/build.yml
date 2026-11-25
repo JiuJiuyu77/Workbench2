@@ -196,6 +196,13 @@ jobs:
           done
           ls BundledToolchain/reverse/bin | head -5
 
+      - name: 裁剪内置工具链
+        run: |
+          set -euo pipefail
+          python3 scripts/prune_toolchain.py BundledToolchain
+          du -sh BundledToolchain
+          du -sh BundledToolchain/swift-toolchain
+
       - name: 安装 meson / ninja（iSH 沙盒构建）
         run: |
           set -euo pipefail
