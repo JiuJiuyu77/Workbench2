@@ -1,5 +1,7 @@
 #import "../Runtime/Sandbox/TFAIISHRemote.h"
 #import "DXRemoteWorkspace.h"
+#import "../Runtime/Build/TFAIBuildCache.h"
+#import "../Runtime/ClassDump/TFAIClassDump.h"
 #import "DXRemoteAccess.h"
 #import "DXRemoteHTTP.h"
 #import "DXFlexBridge.h"
