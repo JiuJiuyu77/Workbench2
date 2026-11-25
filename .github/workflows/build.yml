@@ -157,6 +157,22 @@ jobs:
           SHA="$(python3 -c "import json;print([r for r in json.load(open('Resources/DownloadResources.json')) if r['id']=='theos-toolchain'][0]['sha256'])")"
           echo "$SHA  BundledToolchain.tar.gz" | shasum -a 256 -c -
 
+      - name: 缓存 OLLVM / 逆向工具
+        id: extras-cache
+        uses: actions/cache@v4
+        with:
+          path: WorkbenchExtras.tar.gz
+          key: theos-extras-${{ hashFiles('Resources/DownloadResources.json') }}
+
+      - name: 下载 OLLVM / 逆向工具（缺缓存时）
+        if: steps.extras-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          URL="$(python3 -c "import json;print([r for r in json.load(open('Resources/DownloadResources.json')) if r['id']=='theos-extras'][0]['url'])")"
+          curl -L --retry 3 --retry-delay 5 -o WorkbenchExtras.tar.gz "$URL"
+          SHA="$(python3 -c "import json;print([r for r in json.load(open('Resources/DownloadResources.json')) if r['id']=='theos-extras'][0]['sha256'])")"
+          echo "$SHA  WorkbenchExtras.tar.gz" | shasum -a 256 -c -
+
       - name: 展开内置工具链
         run: |
           set -euo pipefail
@@ -169,8 +185,11 @@ jobs:
             ( shopt -s dotglob; mv "BundledToolchain/${tops[0]}"/* BundledToolchain/ )
             rmdir "BundledToolchain/${tops[0]}" || true
           fi
+          tar xzf WorkbenchExtras.tar.gz -C BundledToolchain
           ls BundledToolchain | head -20
           du -sh BundledToolchain
+          test -x BundledToolchain/ollvm/bin/clang || { echo "::error::缺 ollvm/bin/clang"; exit 1; }
+          ls BundledToolchain/reverse/bin | head -5
 
       - name: 安装 meson / ninja（iSH 沙盒构建）
         run: |
