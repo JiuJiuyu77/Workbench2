@@ -55,82 +55,12 @@ app.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(ROOT / 'LICENSE', app / 'Dylix-LICENSE.txt')
 frameworks = app / 'Frameworks'
 frameworks.mkdir(exist_ok=True)
-names = ['ios_system', 'libLLVM', 'clang', 'lld'] + ([] if args.simulator else ['perl'])
-for name in names:
-    bundle = pathlib.Path(os.environ.get('WORKBENCH_TOOLCHAIN_ROOT', str(ROOT))) / 'Vendor' / (name + '.xcframework')
-    info = plistlib.loads((bundle / 'Info.plist').read_bytes())
-    match = next(x for x in info['AvailableLibraries']
-                 if x['SupportedPlatform'] == 'ios' and arch in x['SupportedArchitectures']
-                 and x.get('SupportedPlatformVariant', '') == ('simulator' if args.simulator else ''))
-    source = bundle / match['LibraryIdentifier'] / match['LibraryPath']
-    dest = frameworks / source.name
-    shutil.copytree(source, dest, dirs_exist_ok=True)
-commands = {name: [f'{framework}.framework/{framework}', 'main', '', 'no']
-            for name, framework in [('clang', 'clang'), ('ld64.lld', 'lld')]}
-(app / 'commands.plist').write_bytes(plistlib.dumps(commands))
-(app / 'commandDictionary.plist').write_bytes(plistlib.dumps({}))
-(app / 'extraCommandsDictionary.plist').write_bytes(plistlib.dumps(commands))
-# SDK archives are inert linker inputs, not code to sign. ldid mistakes a fat
-# static archive for a fat executable and aborts with "Unknown header magic".
-# Keep the complete SDK losslessly compressed, and materialize it in app caches.
-# 内置 SDK 以 tar.gz 形式随仓库分发（解压后约 235MB，压缩后 30MB），
-# 构建时先解压到 build/ 再走原有打包流程。
-_sdk_tar = ROOT / 'Resources/SDK16.5.tar.gz'
-_sdk_dir = ROOT / 'build' / 'SDK16.5'
-if _sdk_tar.exists():
-    _stamp = _sdk_dir / '.extracted'
-    if not _stamp.exists() or _stamp.stat().st_mtime < _sdk_tar.stat().st_mtime:
-        shutil.rmtree(_sdk_dir, ignore_errors=True)
-        _sdk_dir.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(_sdk_tar, 'r:gz') as _tf:
-            _tf.extractall(_sdk_dir)
-        _stamp.write_bytes(b'ok')
-    _sdk_src = _sdk_dir / 'iPhoneOS16.5.sdk' if (_sdk_dir / 'iPhoneOS16.5.sdk').is_dir() else _sdk_dir
-else:
-    _sdk_src = ROOT / 'Resources/SDK'
-
-# 目录名与元数据版本可能不一致（用户提供的包名为 16.5、元数据是 16.4），
-# 一律以 SDKSettings 里的 Version 为准，避免硬编码版本号导致构建中断。
-_embedded_version = None
-for sdk_version, sdk_root, sdk_stem in [
-    (None, _sdk_src, 'SDK'),
-]:
-    metadata = plistlib.loads((sdk_root / 'SDKSettings.plist').read_bytes())
-    _embedded_version = metadata.get('Version')
-    if not _embedded_version:
-        raise SystemExit('Embedded SDK metadata missing Version: ' + str(sdk_root))
-    sdk_version = _embedded_version
-    print('Embedded SDK: %s (metadata Version=%s)' % (sdk_root.name, sdk_version))
-    sdk_cache = ROOT / 'build' / ('embedded-' + sdk_stem + '.zip')
-    if not sdk_cache.exists() or sdk_cache.stat().st_mtime < max(p.stat().st_mtime for p in sdk_root.rglob('*') if p.is_file()):
-        sdk_temp = sdk_cache.with_name(sdk_cache.name + '.' + str(os.getpid()) + '.tmp')
-        with zipfile.ZipFile(sdk_temp, 'w', zipfile.ZIP_DEFLATED) as archive:
-            for path in sorted(sdk_root.rglob('*')):
-                if path.is_file() and not any(part == '.DS_Store' or part == '__MACOSX' or part.startswith('._') for part in path.relative_to(sdk_root).parts):
-                    archive.write(path, path.relative_to(sdk_root))
-        sdk_temp.replace(sdk_cache)
-    # SDK26 is an optional, pinned download. Keep 16.5 usable offline.
-    shutil.copyfile(sdk_cache, app / (sdk_stem + '.zip'))
-    (app / (sdk_stem + 'Resource.plist')).write_bytes(plistlib.dumps({
-        'version': sdk_version,
-        'sha256': hashlib.sha256(sdk_cache.read_bytes()).hexdigest(),
-    }))
-# Optional SDK26 is hosted separately; building the App needs only the active Xcode SDK.
+# 内置 SDK 只用于给 Theos 的 Toolchain/sdks 补一份 16.5（见上方 BundledToolchain 段），
+# 不再往 App 里塞 SDK.zip：进程内编译已移除。
 pinned_resources = json.loads((ROOT / 'Resources/DownloadResources.json').read_text())
 pinned_sdk26 = next(row for row in pinned_resources if row['id'] == 'sdk26')
 (app / 'SDK26Resource.plist').write_bytes(plistlib.dumps({'version': '26.0', 'sha256': pinned_sdk26['sha256']}))
-resource_headers = ROOT / 'Resources/ClangInclude'
-if resource_headers.is_dir():
-    shutil.copytree(resource_headers, app / 'ClangInclude', dirs_exist_ok=True)
-else:
-    print('warn: Resources/ClangInclude 缺失，跳过')
-perl_cfg_path = ROOT / 'Resources/Perl/Config.pm'
-if perl_cfg_path.exists():
-    perl_config = perl_cfg_path.read_text()
-    assert '$^V eq 5.34.0' in perl_config, 'Expected iOS Perl 5.34.0 modules'
-else:
-    print('warn: Resources/Perl 缺失，跳过 Perl 模块校验（运行期 .x 预处理可能失败）')
-resources = ['CompatibilityRules', 'ThirdPartyNotices', 'GitHelp', 'HelpArticles', 'Editor', 'GitDiff', 'RemoteWeb', 'Personas', 'AIProviders', 'AgentSkills', 'logos', 'Include', 'Perl', 'SampleProject', 'SampleObjectiveC', 'SampleMultiProject', 'FLEXProject', 'VendorFrameworks', 'Terminal']
+resources = ['CompatibilityRules', 'ThirdPartyNotices', 'GitHelp', 'HelpArticles', 'Editor', 'GitDiff', 'RemoteWeb', 'Personas', 'AIProviders', 'AgentSkills', 'Include', 'SampleProject', 'SampleObjectiveC', 'SampleMultiProject', 'FLEXProject', 'VendorFrameworks', 'Terminal']
 if args.simulator:
     resources.append('SampleLogosGenerated')
     resources.append('SampleMultiObjectiveC')
@@ -215,7 +145,7 @@ info = {
     'CFBundleExecutable': 'Workbench', 'CFBundleIdentifier': args.bundle_id,
     'CFBundleName': 'Workbench', 'CFBundleDisplayName': 'Workbench',
     'CFBundleDevelopmentRegion': 'zh-Hans', 'CFBundleLocalizations': ['zh-Hans', 'en'],
-    'NSCameraUsageDescription': '拍摄照片作为您选择发送给模型的参考附件。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.2.1', 'CFBundleVersion': '286', 'WorkbenchEdition': 'opensource',
+    'NSCameraUsageDescription': '拍摄照片作为您选择发送给模型的参考附件。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.2.2', 'CFBundleVersion': '287', 'WorkbenchEdition': 'opensource',
     'CFBundleDocumentTypes': [{'CFBundleTypeName':'Workbench Files','CFBundleTypeRole':'Editor','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','public.archive','public.source-code']}],
     'CFBundleURLTypes': [{'CFBundleURLName':'Workbench Incoming','CFBundleURLSchemes':['workbench', 'workbench']}],
     'BGTaskSchedulerPermittedIdentifiers': ['com.HuQing.Workbench.ai.processing'],
@@ -276,9 +206,7 @@ subprocess.run(['python3', str(ROOT / 'scripts/build_classdump.py'), '--platform
 cmd = ['xcrun', '--sdk', sdk, 'clang', '-arch', arch, '-isysroot', sysroot,
        '-mios-simulator-version-min=15.0' if args.simulator else '-miphoneos-version-min=15.0',
        '-fobjc-arc', '-fmodules', '-framework', 'Network', '-framework', 'CoreImage', '-I' + str(ROOT / 'Vendor/libgit2/include'), '-weak_framework', 'BackgroundTasks', '-framework', 'AVFoundation', '-framework', 'UserNotifications', '-framework', 'AuthenticationServices', '-framework', 'Security', '-framework', 'CoreFoundation', '-liconv', '-framework', 'UIKit', '-framework', 'CoreGraphics', '-framework', 'QuartzCore', '-framework', 'Foundation', '-framework', 'UniformTypeIdentifiers', '-framework', 'WebKit', '-framework', 'JavaScriptCore', '-larchive',
-       '-F' + str(frameworks), '-framework', 'ios_system',
-       '-Wl,-needed_framework,libLLVM',
-       '-Wl,-rpath,@executable_path/Frameworks', str(ROOT / 'App/main.m'), str(ROOT / 'App/RuntimeDiagnostics.m'), str(ROOT / 'App/WorkbenchHealth.m'), str(ROOT / 'App/WBTheosToolsController.m'), str(ROOT / 'App/WBToolsController.m'), str(ROOT / 'App/WBReverseController.m'), str(ROOT / 'App/WBRemoteController.m'), str(ROOT / 'App/SPJIT.m'), str(ROOT / 'App/SPJITService.m'), str(ROOT / 'App/SPDiagnostics.m'), str(ROOT / 'App/SPHeaderExport.m'), str(ROOT / 'App/SPRemoteServer.m'), str(ROOT / 'App/SPCompat.m'), str(ROOT / 'App/SPModels.m'), str(ROOT / 'App/SPSession.m'), str(ROOT / 'App/SPAOJIT.m'), str(ROOT / 'App/SPStore.m'), str(ROOT / 'App/SPOutputNaming.m'), str(ROOT / 'App/SPToolchain.m'), str(ROOT / 'App/SPToolchainInstaller.m'), str(ROOT / 'App/SPToolchainDownloader.m'), str(ROOT / 'App/SPProcessGuard.m'), str(ROOT / 'App/SPNetworkMonitor.m'), str(ROOT / 'App/SPBuilder.m'), str(ROOT / 'App/SPIShell.m'), str(ROOT / 'App/SPTrollStoreFix.m'), str(ROOT / 'App/WBCloudBuild.m'), str(ROOT / 'App/ArchiveImport.m'), str(ROOT / 'App/TheosMakefile.m'), str(ROOT / 'App/DebPackage.m'), str(ROOT / 'App/OutputNaming.m'), str(ROOT / 'App/CompatibilityRepair.m'), str(ROOT / 'App/Studio.m'), str(ROOT / 'App/StorageSpace.m'), str(ROOT / 'App/ProjectSafety.m'), str(ROOT / 'App/ProjectTrash.m'), str(ROOT / 'App/GlassSupport.m'), str(ROOT / 'App/GitService.m'), str(ROOT / 'App/GitUI.m'), str(ROOT / 'App/GitHubRepositories.m'), str(ROOT / 'App/GitPATGuide.m'), str(ROOT / 'App/LinkSupport.m'), str(ROOT / 'App/HelpArticle.m'), str(ROOT / 'App/GitAutomation.m'), str(ROOT / 'App/GitDiffView.m'), str(gitlib), str(ROOT / 'Vendor/MBProgressHUD/MBProgressHUD.m'), '-o', str(app / 'Workbench')]
+       str(ROOT / 'App/main.m'), str(ROOT / 'App/RuntimeDiagnostics.m'), str(ROOT / 'App/WorkbenchHealth.m'), str(ROOT / 'App/WBTheosToolsController.m'), str(ROOT / 'App/WBToolsController.m'), str(ROOT / 'App/WBReverseController.m'), str(ROOT / 'App/WBRemoteController.m'), str(ROOT / 'App/SPJIT.m'), str(ROOT / 'App/SPJITService.m'), str(ROOT / 'App/SPDiagnostics.m'), str(ROOT / 'App/SPHeaderExport.m'), str(ROOT / 'App/SPRemoteServer.m'), str(ROOT / 'App/SPCompat.m'), str(ROOT / 'App/SPModels.m'), str(ROOT / 'App/SPSession.m'), str(ROOT / 'App/SPAOJIT.m'), str(ROOT / 'App/SPStore.m'), str(ROOT / 'App/SPOutputNaming.m'), str(ROOT / 'App/SPToolchain.m'), str(ROOT / 'App/SPToolchainInstaller.m'), str(ROOT / 'App/SPToolchainDownloader.m'), str(ROOT / 'App/SPProcessGuard.m'), str(ROOT / 'App/SPNetworkMonitor.m'), str(ROOT / 'App/SPBuilder.m'), str(ROOT / 'App/SPIShell.m'), str(ROOT / 'App/SPTrollStoreFix.m'), str(ROOT / 'App/WBCloudBuild.m'), str(ROOT / 'App/ArchiveImport.m'), str(ROOT / 'App/TheosMakefile.m'), str(ROOT / 'App/DebPackage.m'), str(ROOT / 'App/OutputNaming.m'), str(ROOT / 'App/CompatibilityRepair.m'), str(ROOT / 'App/Studio.m'), str(ROOT / 'App/StorageSpace.m'), str(ROOT / 'App/ProjectSafety.m'), str(ROOT / 'App/ProjectTrash.m'), str(ROOT / 'App/GlassSupport.m'), str(ROOT / 'App/GitService.m'), str(ROOT / 'App/GitUI.m'), str(ROOT / 'App/GitHubRepositories.m'), str(ROOT / 'App/GitPATGuide.m'), str(ROOT / 'App/LinkSupport.m'), str(ROOT / 'App/HelpArticle.m'), str(ROOT / 'App/GitAutomation.m'), str(ROOT / 'App/GitDiffView.m'), str(gitlib), str(ROOT / 'Vendor/MBProgressHUD/MBProgressHUD.m'), '-o', str(app / 'Workbench')]
 # iSH host objects are ARM64 only; never link macOS or device archives into a simulator.
 ish_enabled = arch == 'arm64'
 if ish_enabled:
@@ -363,8 +291,6 @@ if _jit_src.is_file():
     _helper.chmod(0o755)
     subprocess.run(['codesign', '--force', '--sign', args.identity, str(_helper)], check=True)
     print('JIT helper: ' + str(_helper))
-for name in names:
-    subprocess.run(['codesign', '--force', '--sign', args.identity, str(frameworks / (name + '.framework'))], check=True)
 # Share Extension passes copied files through an explicitly entitled App Group.
 # Re-signing must preserve matching group rights in both provisioning profiles.
 share = app / 'PlugIns/WorkbenchShare.appex'

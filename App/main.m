@@ -11,7 +11,6 @@
 #import "RuntimeDiagnostics.h"
 #import "GlassSupport.h"
 #import <UIKit/UIKit.h>
-#import <ios_system/ios_system.h>
 #import <mach-o/loader.h>
 #import <dlfcn.h>
 #import <pthread.h>
@@ -32,99 +31,8 @@ static void TMCLog(FILE *stream, const char *format, ...) {
  NSDateFormatter *formatter=[NSDateFormatter new];formatter.locale=[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];formatter.dateFormat=@"HH:mm:ss.SSS";NSString *stamp=[formatter stringFromDate:NSDate.date];[message enumerateSubstringsInRange:NSMakeRange(0,message.length) options:NSStringEnumerationByLines usingBlock:^(NSString *line,NSRange range,NSRange enclosing,BOOL *stop){fprintf(stream,"[%s] %s\n",stamp.UTF8String,line.UTF8String);}];fflush(stream);
 }
 
-// LLVM 14 ArrayRef<const char *> is a trivial pointer + size aggregate on both
-// supported ABIs. Call the exported cc1 entry directly to keep driver InitLLVM
-// teardown from invalidating LLVM's process-wide pass registry between sources.
-typedef struct { const char *const *data; size_t size; } TMCLLVM14Argv;
-typedef struct {
-    int (*entry)(int, char **);
-    int (*cc1)(TMCLLVM14Argv, const char *, void *);
-    bool (*macho)(TMCLLVM14Argv, bool, void *, void *);
-    void *llvmOut;
-    void *llvmErr;
-    int argc;
-    char **argv;
-    FILE *input;
-    FILE *log;
-    FILE *errors;
-    int status;
-} ToolInvocation;
-static void finishTool(void *opaque) {
-    ToolInvocation *call = opaque;
-    if (call->status == -999) call->status = ios_getCommandStatus();
-    fflush(call->log);
-}
-static void *invokeTool(void *opaque) {
-    ToolInvocation *call = opaque;
-    @autoreleasepool {
-        ios_switchSession(call);
-        ios_setStreams(call->input, call->log, call->errors);
-        thread_stdin = call->input; thread_stdout = call->log; thread_stderr = call->errors;
-        ios_setenv("SYSROOT", NSBundle.mainBundle.bundlePath.fileSystemRepresentation, 1);
-        ios_setenv("APPDIR", NSBundle.mainBundle.bundlePath.fileSystemRepresentation, 1);
-        ios_setenv("PERL5LIB", [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Perl"].fileSystemRepresentation, 1);
-        pthread_cleanup_push(finishTool, call);
-        if (call->cc1) {
-            void (*resetOptions)(void) = dlsym(RTLD_DEFAULT, "_ZN4llvm2cl25ResetAllOptionOccurrencesEv");
-            void (*removeHandler)(void) = dlsym(RTLD_DEFAULT, "_ZN4llvm26remove_fatal_error_handlerEv");
-            if (resetOptions) resetOptions();
-            TMCLLVM14Argv arguments = {(const char *const *)(call->argv + 1), (size_t)call->argc - 1};
-            call->status = call->cc1(arguments, call->argv[0], (void *)call->cc1);
-            if (removeHandler) removeHandler();
-        } else if (call->macho) {
-            TMCLLVM14Argv arguments = {(const char *const *)call->argv, (size_t)call->argc};
-            call->status = call->macho(arguments, false, call->llvmOut, call->llvmErr) ? 0 : 1;
-        } else call->status = call->entry(call->argc, call->argv);
-        pthread_cleanup_pop(1);
-        fflush(call->log);
-    }
-    return NULL;
-}
 static BOOL TMCBuildRunning = NO;
 BOOL TMCBuildIsRunning(void){NSCAssert(NSThread.isMainThread,@"Main-thread build state");return TMCBuildRunning;}
-
-static int runToolOutput(NSArray<NSString *> *arguments, FILE *input, FILE *log, FILE *errors) {
-#if TARGET_OS_SIMULATOR
-    // Test the real per-source output/mapping pipeline with host-generated Logos
-    // fixtures. This branch is absent from device IPAs, which use embedded Perl.
-    if([arguments.firstObject isEqual:@"perl"]&&[NSProcessInfo.processInfo.arguments containsObject:@"--test-logos-preprocessed"]){
-        NSData *fixture=[NSData dataWithContentsOfFile:[arguments.lastObject stringByAppendingString:@".preprocessed"]];
-        fprintf(errors,"SIMULATOR TEST: Logos text preprocessed by macOS Perl\n");
-        return fixture&&fwrite(fixture.bytes,1,fixture.length,log)==fixture.length?0:74;
-    }
-#endif
-    NSString *name = [arguments.firstObject isEqualToString:@"clang"] ? @"clang" : ([arguments.firstObject isEqualToString:@"perl"] ? @"perl" : @"lld");
-    NSString *path = [NSBundle.mainBundle.privateFrameworksPath stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.framework/%@", name, name]];
-    void *handle = dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL);
-    if (!handle) { TMCLog(log, "%s\n", dlerror()); return 127; }
-    ToolInvocation call = {.entry = dlsym(handle, "main"), .argc = (int)arguments.count, .input = input, .log = log, .errors = errors, .status = -999};
-    if ([name isEqualToString:@"clang"]) {
-        call.cc1 = dlsym(handle, "_Z8cc1_mainN4llvm8ArrayRefIPKcEES2_Pv");
-        if (!call.cc1) { fprintf(errors, "Missing LLVM 14 cc1 entry: %s\n", dlerror()); return 127; }
-        fprintf(errors, "clang entry: cc1_main (preserve LLVM global state)\n");
-    }
-    if ([name isEqualToString:@"lld"]) {
-        call.macho = dlsym(handle, "_ZN3lld5macho4linkEN4llvm8ArrayRefIPKcEEbRNS1_11raw_ostreamES7_");
-        void *(*outs)(void) = dlsym(RTLD_DEFAULT, "_ZN4llvm4outsEv");
-        void *(*errs)(void) = dlsym(RTLD_DEFAULT, "_ZN4llvm4errsEv");
-        if (!call.macho || !outs || !errs) { fprintf(errors, "Missing reusable Mach-O linker entry\n"); return 127; }
-        call.llvmOut = outs(); call.llvmErr = errs();
-        fprintf(errors, "lld entry: macho::link (canExitEarly=false)\n");
-    }
-    if (!call.entry) { fprintf(errors, "Missing compiler entry: %s\n", dlerror()); return 127; }
-    call.argv = calloc(arguments.count + 1, sizeof(char *));
-    for (NSUInteger i = 0; i < arguments.count; i++) call.argv[i] = strdup(arguments[i].UTF8String);
-    pthread_t worker;
-    int creation = pthread_create(&worker, NULL, invokeTool, &call);
-    if (creation == 0) pthread_join(worker, NULL);
-    else call.status = creation;
-    for (NSUInteger i = 0; i < arguments.count; i++) free(call.argv[i]);
-    free(call.argv);
-    return call.status;
-}
-static int runTool(NSArray<NSString *> *arguments, FILE *input, FILE *log) {
-    return runToolOutput(arguments, input, log, log);
-}
 
 static NSString *projectPath(NSString *root, NSString *relative) {
     if (![relative isKindOfClass:NSString.class] || relative.isAbsolutePath) return nil;
@@ -611,320 +519,60 @@ extern UIViewController *TMCStorageBackup258Regression(void);
     [self presentViewController:sheet animated:YES completion:nil];
 }
 - (void)runProof {
-    if (TMCBuildRunning) {
-        self.console.text = @"已有构建正在执行，请等待当前任务完成。";
+    if (TMCBuildRunning) { self.console.text = @"已有构建正在执行，请等待当前任务完成。"; return; }
+    NSString *projectDirectory = self.importedProject;
+    if (!projectDirectory.length ||
+        ![NSFileManager.defaultManager fileExistsAtPath:[projectDirectory stringByAppendingPathComponent:@"Makefile"]]) {
+        self.console.text = @"请先打开一个 Theos 工程（含 Makefile）。\n本版使用内置工具链（Theos / make）构建，不再提供进程内编译。";
         return;
     }
-    self.cancelRequested=NO;TMCBuildRunning = YES;
-    self.hasBuilt = YES;
-    self.lastPackage = nil;
-    TFScreenAwakeSet(@"build",YES);
-    self.console.text = @"执行 IPA 内嵌编译器…\n";
+    if (![SPToolchainInstaller shared].isInstalled) {
+        self.console.text = @"内置工具链未就绪：请到「设置 → 工具链」检查安装状态。";
+        return;
+    }
+    self.cancelRequested = NO; TMCBuildRunning = YES; self.hasBuilt = YES; self.lastPackage = nil;
+    TFScreenAwakeSet(@"build", YES);
     self.navigationItem.rightBarButtonItem.enabled = NO;
     self.navigationItem.leftBarButtonItem.enabled = NO;
     ((UIBarButtonItem *)self.toolbarItems.firstObject).enabled = NO;
     NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
     self.lastBuild = [documents stringByAppendingPathComponent:[@"Build-" stringByAppendingString:NSUUID.UUID.UUIDString]];
     NSString *build = self.lastBuild;
-    NSError *directoryError=nil;if(![NSFileManager.defaultManager createDirectoryAtPath:build withIntermediateDirectories:YES attributes:nil error:&directoryError]){self.hasBuilt=NO;TMCBuildRunning=NO;TFScreenAwakeSet(@"build",NO);self.console.text=[@"创建构建目录失败：" stringByAppendingString:directoryError.localizedDescription];if(self.buildCompletion)self.buildCompletion(NO);return;}
-    NSDictionary *running=@{@"startedAt":@(NSDate.date.timeIntervalSince1970)};[[NSJSONSerialization dataWithJSONObject:running options:0 error:nil] writeToFile:[build stringByAppendingPathComponent:@".build-in-progress.json"] atomically:YES];
-    TMCDocumentHide(build);
-    NSString *globalDebPattern=[NSUserDefaults.standardUserDefaults stringForKey:@"StudioOutputPattern-deb"]?:TMCDefaultOutputPattern(@"deb");
-    NSString *globalDylibPattern=[NSUserDefaults.standardUserDefaults stringForKey:@"StudioOutputPattern-dylib"]?:TMCDefaultOutputPattern(@"dylib");
-    NSTimeInterval startedAt=NSDate.date.timeIntervalSince1970;
-    NSTimeInterval startedUptime=NSProcessInfo.processInfo.systemUptime;
+    self.console.text = @"使用内置工具链（Theos / make）构建…\n";
+    NSTimeInterval startedAt = NSDate.date.timeIntervalSince1970;
+    __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        [[NSFileManager defaultManager] createDirectoryAtPath:build withIntermediateDirectories:YES attributes:nil error:nil];
-        NSString *source=self.importedSource;
-        if(!self.importedProject&&!source){source=[build stringByAppendingPathComponent:@"smoke.m"];[@"#import <Foundation/Foundation.h>\n@interface MobileSmoke : NSObject\n-(NSString*)message;\n@end\n@implementation MobileSmoke\n-(NSString*)message { return @\"Built inside iOS\"; }\n@end\n" writeToFile:source atomically:YES encoding:NSUTF8StringEncoding error:nil];}
-        NSString *projectDirectory=self.importedProject?:source.stringByDeletingLastPathComponent;
-        // Work1 工具链全走新协议（Theos + make）。
-        // 只要工具链已就位，就不允许回退到进程内 LLVM 编译：
-        // 两条链路用的 clang / SDK / 混淆器不同，混用会让产物和问题定位都对不上。
-        if ([SPToolchainInstaller shared].isInstalled) {
-            BOOL ok = [self tryTheosBuildProject:projectDirectory buildDir:build];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                self.console.text = [self.console.text stringByAppendingString:
-                    ok ? @"BUILD SUCCEEDED — 工具链（Theos / make）\n"
-                       : @"BUILD FAILED — 工具链（Theos / make），本版不回退进程内编译\n"];
-                TMCBuildRunning = NO;
-                TFScreenAwakeSet(@"build", NO);
-                self.navigationItem.rightBarButtonItem.enabled = YES;
-                self.navigationItem.leftBarButtonItem.enabled = YES;
-                ((UIBarButtonItem *)self.toolbarItems.firstObject).enabled = YES;
-                if (self.buildCompletion) self.buildCompletion(ok);
-            });
-            return;
-        }
-        TMCLog(NULL, "工具链未安装：本次使用进程内编译（安装内置工具链后会自动改走 Theos）\n");
-        NSDictionary *config = TMCEffectiveBuildOptions(projectConfig(projectDirectory),NSUserDefaults.standardUserDefaults);
-        NSString *debPattern=config[@"outputPattern-deb"]?:globalDebPattern,*dylibPattern=[config[@"exportDylib"] boolValue]?(config[@"outputPattern-dylib"]?:globalDylibPattern):@"{product}";
-        NSMutableArray<NSString *> *projectSources = [sourcePaths(projectDirectory) mutableCopy];
-        NSMutableArray *logosResults = [NSMutableArray array];
-        NSArray *originalSources = projectSources.copy;
-        NSDictionary *provenance=TFBuildProvenance(projectDirectory,originalSources,config,build);
-        [[NSJSONSerialization dataWithJSONObject:provenance options:NSJSONWritingPrettyPrinted error:nil] writeToFile:[build stringByAppendingPathComponent:@"provenance.json"] atomically:YES];
-        NSString *logPath = [build stringByAppendingPathComponent:@"build.log"];
-        FILE *log = fopen(logPath.fileSystemRepresentation, "w+");
-        TMCLog(log,"BUILD STARTED — %s\n",NSDate.date.description.UTF8String);
-        TMCLog(log,"CACHE POLICY — %s\n",self.checkpointCacheDirectory?"clean rebuild; current project and conversation only":"manual build checkpoint policy");
-        FILE *input = fopen("/dev/null", "r");
-        if(!log||!input){if(log)fclose(log);if(input)fclose(input);NSDictionary *failure=@{@"success":@NO,@"commands":@[],@"packageError":@"创建构建日志失败，请检查可用存储空间"};[[NSJSONSerialization dataWithJSONObject:failure options:0 error:nil] writeToFile:[build stringByAppendingPathComponent:@"report.json"] atomically:YES];dispatch_async(dispatch_get_main_queue(),^{self.hasBuilt=NO;TMCBuildRunning=NO;TFScreenAwakeSet(@"build",NO);self.console.text=failure[@"packageError"];if(self.buildCompletion)self.buildCompletion(NO);});return;}
-        initializeEnvironment();
-        setenv("SYSROOT", NSBundle.mainBundle.bundlePath.fileSystemRepresentation, 1);
-        NSString *perlLib = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Perl"];
-        setenv("APPDIR", NSBundle.mainBundle.bundlePath.fileSystemRepresentation, 1);
-        setenv("PERL5LIB", perlLib.UTF8String, 1);
-        chdir(build.fileSystemRepresentation);
-        joinMainThread = true;
-        ios_switchSession((__bridge const void *)self);
-        ios_setStreams(input, log, log);
-        NSError *registrationError = addCommandList([[NSBundle mainBundle] pathForResource:@"commands" ofType:@"plist"]);
-        TMCLog(log, "registration: %s\n", registrationError.description.UTF8String ?: "OK");
-        for (NSString *name in @[@"libLLVM", @"clang", @"lld"]) {
-            NSString *path = [NSBundle.mainBundle.privateFrameworksPath stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.framework/%@", name, name]];
-            void *handle = dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL);
-            TMCLog(log, "%s: %s\n", name.UTF8String, handle ? "loaded" : dlerror());
-        }
-        TMCLog(log, "commands=%s\n", commandsAsString().UTF8String); fflush(log);
-        for (NSUInteger logosIndex=0;logosIndex<originalSources.count;logosIndex++) {
-            if(self.cancelRequested){TMCLog(log,"BUILD CANCELLED before Logos step\n");break;}
-            NSString *original=originalSources[logosIndex];
-            if (![@[@"x",@"xm"] containsObject:original.pathExtension.lowercaseString]) continue;
-            source = original;
-            NSString *extension=[original.pathExtension.lowercaseString isEqual:@"x"]?@"m":@"mm";
-            NSString *generated = [build stringByAppendingPathComponent:[NSString stringWithFormat:@"logos-%03lu.%@",(unsigned long)logosIndex,extension]];
-            FILE *output = fopen(generated.fileSystemRepresentation, "w");
-            NSString *logos = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"logos/bin/logos.pl"];
-            TMCLog(log, "Perl runtime: 5.34.0; bundled iOS modules: %s\n", perlLib.UTF8String);
-            // Logos writes source to stdout; diagnostics use stderr. Keep a separate output file.
-            NSMutableArray *arguments = [NSMutableArray arrayWithObjects:@"perl", logos, nil];
-            NSString *generator=config[@"logosGenerator"];
-            if([@[@"internal",@"MobileSubstrate",@"libhooker"] containsObject:generator])[arguments addObjectsFromArray:@[@"-c",[@"generator=" stringByAppendingString:generator]]];
-            [arguments addObject:source];
-            int status = output ? runToolOutput(arguments, input, output, log) : 74;
-            if(output)fclose(output);
-            TMCLog(log, "Logos exit=%d\n", status);
-            NSString *originalRelative=[original substringFromIndex:projectDirectory.length+1];
-            [logosResults addObject:@{@"source":originalRelative,@"generated":generated.lastPathComponent,@"exit":@(status)}];
-            if (status == 0) projectSources[logosIndex] = generated;
-            else {
-                NSData *failure = [NSJSONSerialization dataWithJSONObject:@{@"execution":@"embedded iOS frameworks", @"logos":logosResults, @"commands":@[], @"success":@NO, @"startedAt":@(startedAt), @"finishedAt":@(NSDate.date.timeIntervalSince1970), @"durationSeconds":@(NSProcessInfo.processInfo.systemUptime-startedUptime)} options:NSJSONWritingPrettyPrinted error:nil];
-                [failure writeToFile:[build stringByAppendingPathComponent:@"report.json"] atomically:YES];
-                TMCLog(log,"BUILD FAILED — Logos exit=%d; duration=%.2fs\n",status,NSProcessInfo.processInfo.systemUptime-startedUptime);
-                fflush(log); dispatch_async(dispatch_get_main_queue(), ^{
-                self.hasBuilt = NO; TMCBuildRunning = NO;
-                if (self.buildCompletion) self.buildCompletion(NO);
-                self.console.text = @"Logos 执行失败，请点击导出结果，保存 build.log 以便排查。";
-                TFScreenAwakeSet(@"build",NO);
-                self.navigationItem.leftBarButtonItem.enabled = YES;
-                ((UIBarButtonItem *)self.toolbarItems.firstObject).enabled = YES;
-            }); fclose(input); fclose(log); return; }
-        }
-        TMCLog(log,"准备本地 SDK（首次构建或缓存清理后需要解压）\n");
-        NSError *sdkError=nil;
-        NSDictionary *sdkSettings=TMCSDKBuildSettings(config,NSUserDefaults.standardUserDefaults,&sdkError);
-        NSString *sdkVersion=sdkSettings[@"sdkVersion"],*minimum=sdkSettings[@"deploymentTarget"];
-        NSString *sdk=sdkSettings?TMCPrepareSelectedSDK(NSBundle.mainBundle,NSSearchPathForDirectoriesInDomains(NSCachesDirectory,NSUserDomainMask,YES).firstObject,sdkVersion,&sdkError):nil;
-        NSString *cppSDK=sdk;
-        if(sdk&&[sdkVersion isEqual:@"26.0"]){for(NSString *source in projectSources)if([@[@"mm",@"cpp"] containsObject:source.pathExtension.lowercaseString]){cppSDK=TMCPrepareSelectedSDK(NSBundle.mainBundle,NSSearchPathForDirectoriesInDomains(NSCachesDirectory,NSUserDomainMask,YES).firstObject,@"16.4",&sdkError);if(!cppSDK)sdk=nil;else TMCLog(log,"C++ standard library headers: SDK 16.4 compatibility set for Clang 14 (platform headers/linker stubs remain SDK 26.0)\n");break;}}
-        if(!sdk){
-            TMCLog(log,"BUILD FAILED — SDK: %s\n",sdkError.localizedDescription.UTF8String);
-            NSDictionary *failure=@{@"success":@NO,@"execution":@"embedded iOS frameworks",@"error":sdkError.localizedDescription?:@"SDK preparation failed",@"commands":@[],@"startedAt":@(startedAt),@"finishedAt":@(NSDate.date.timeIntervalSince1970)};
-            [[NSJSONSerialization dataWithJSONObject:failure options:NSJSONWritingPrettyPrinted error:nil] writeToFile:[build stringByAppendingPathComponent:@"report.json"] atomically:YES];
-            fclose(input);fclose(log);
-            dispatch_async(dispatch_get_main_queue(), ^{self.hasBuilt=NO;TMCBuildRunning=NO;TFScreenAwakeSet(@"build",NO);self.navigationItem.leftBarButtonItem.enabled=YES;self.navigationItem.rightBarButtonItem.enabled=YES;((UIBarButtonItem *)self.toolbarItems.firstObject).enabled=YES;self.console.text=sdkError.localizedDescription;if(self.buildCompletion)self.buildCompletion(NO);});return;
-        }
-        TMCLog(log,"SDK=%s; deployment target=%s; embedded Clang/LLD 14\n",sdkVersion.UTF8String,minimum.UTF8String);
-        NSString *headers = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"ClangInclude"];
-        NSString *include = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Include"];
-        NSString *vendorFrameworks = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"VendorFrameworks"];
-        NSMutableArray *projectPlists = [NSMutableArray array];
-        for (NSString *file in [NSFileManager.defaultManager contentsOfDirectoryAtPath:projectDirectory error:nil]) {
-            if ([file.pathExtension.lowercaseString isEqualToString:@"plist"]) [projectPlists addObject:file];
-        }
-        NSString *controlPath = [projectDirectory stringByAppendingPathComponent:@"control"];
-        BOOL hasControl = [NSFileManager.defaultManager fileExistsAtPath:controlPath];
-        BOOL customMetadata = hasControl || projectPlists.count > 0;
-        NSString *tweakName = [config[@"productName"] isKindOfClass:NSString.class] ? config[@"productName"] : [config[@"name"] isKindOfClass:NSString.class] ? config[@"name"] : projectPlists.count == 1 ? [projectPlists.firstObject stringByDeletingPathExtension] : @"MobileTweak";
-        NSString *packageControl=[NSString stringWithContentsOfFile:controlPath encoding:NSUTF8StringEncoding error:nil];
-        NSArray *packageSchemes=config[@"packageSchemes"];BOOL multipleSchemes=[config[@"package"] boolValue]&&packageSchemes.count>1;NSString *packageScheme=TMCPackageScheme(config,packageControl);NSString *cpu=[config[@"cpuArchitecture"] isEqual:@"arm64e"]?@"arm64e":@"arm64";
-        NSDictionary *namingContext=TMCOutputContext(projectDirectory,tweakName,[NSDate dateWithTimeIntervalSince1970:startedAt]);
-        NSError *namingError=nil;NSString *dylibName=TMCOutputFilename(dylibPattern,@"dylib",namingContext,&namingError);NSString *debName=[config[@"package"] boolValue]?TMCOutputFilename(debPattern,@"deb",namingContext,&namingError):@"unused.deb";
-        if(multipleSchemes&&[config[@"package"] boolValue]){debName=TMCVariantOutputFilename(debPattern,@"deb",namingContext,packageSchemes,packageScheme,&namingError);}
-        if(!dylibName||!debName){
-            TMCLog(log,"output naming error: %s\n",namingError.localizedDescription.UTF8String);TMCLog(log,"BUILD FAILED — output naming; duration=%.2fs\n",NSProcessInfo.processInfo.systemUptime-startedUptime);fflush(log);fclose(input);fclose(log);
-            NSDictionary *failure=@{@"execution":@"embedded iOS frameworks",@"success":@NO,@"commands":@[],@"outputNamingError":namingError.localizedDescription?:@"文件名模板有误",@"startedAt":@(startedAt),@"finishedAt":@(NSDate.date.timeIntervalSince1970),@"durationSeconds":@(NSProcessInfo.processInfo.systemUptime-startedUptime)};
-            [[NSJSONSerialization dataWithJSONObject:failure options:NSJSONWritingPrettyPrinted error:nil] writeToFile:[build stringByAppendingPathComponent:@"report.json"] atomically:YES];
-            dispatch_async(dispatch_get_main_queue(),^{self.hasBuilt=NO;TMCBuildRunning=NO;TFScreenAwakeSet(@"build",NO);self.console.text=namingError.localizedDescription;self.navigationItem.rightBarButtonItem.enabled=YES;self.navigationItem.leftBarButtonItem.enabled=YES;((UIBarButtonItem *)self.toolbarItems.firstObject).enabled=YES;if(self.buildCompletion)self.buildCompletion(NO);});return;
-        }
-        TMCLog(log,"metadata: %s; internal product: %s; output dylib: %s; output deb: %s\n",customMetadata?"project control/plist":"default test metadata (com.example.target)",tweakName.UTF8String,dylibName.UTF8String,debName.UTF8String);
-        TMCLog(log,"package scheme=%s; CPU=%s; package enabled=%s\n",packageScheme.UTF8String,cpu.UTF8String,[config[@"package"] isEqual:@NO]?"no":"yes");
-        NSMutableArray<NSArray<NSString *> *> *commands = [NSMutableArray array];
-        NSMutableArray *objects = [NSMutableArray array];
-        NSMutableArray *compileSources = [NSMutableArray array];
-        for (NSUInteger index = 0; index < projectSources.count; index++) {
-            NSString *inputSource = projectSources[index];
-            NSString *ext = inputSource.pathExtension.lowercaseString;
-            BOOL cpp = [@[@"mm", @"cpp"] containsObject:ext];
-            BOOL objc = [@[@"m", @"mm"] containsObject:ext];
-            NSString *language = objc ? (cpp ? @"objective-c++" : @"objective-c") : (cpp ? @"c++" : @"c");
-            NSString *object = [build stringByAppendingPathComponent:[NSString stringWithFormat:@"source-%03lu.o", (unsigned long)index]];
-            NSMutableArray *arguments = [@[@"clang", @"-cc1", @"-fdiagnostics-parseable-fixits", @"-triple",  [NSString stringWithFormat:@"%@-apple-ios%@",cpu,minimum], @"-emit-obj", @"-target-cpu", [cpu isEqual:@"arm64e"]?@"apple-a12":@"apple-a7", @"-target-feature", @"+neon", @"-target-feature", @"+fp-armv8", @"-target-abi", @"darwinpcs", @"-fgnuc-version=4.2.1", @"-mrelocation-model", @"pic", @"-pic-level", @"2", @"-fblocks", @"-isysroot", sdk, @"-internal-isystem", headers, @"-internal-isystem", [sdk stringByAppendingPathComponent:@"usr/include"], @"-I", include, @"-I", projectDirectory, @"-F", [sdk stringByAppendingPathComponent:@"System/Library/Frameworks"]] mutableCopy];
-            // Direct cc1 calls bypass Darwin driver defaults. Without a frame
-            // pointer, ARM64 EH falls back to DWARF FDEs that bundled LLD 14
-            // misrelocates. Preserve exceptions and emit normal Darwin unwind.
-            [arguments addObjectsFromArray:@[@"-mframe-pointer=non-leaf", @"-funwind-tables=1"]];
-            // SDK 26 target autodetection differs from embedded Clang 14. Declare
-            // our actual iOS device platform explicitly. SubFrameworks holds
-            // UIUtilities headers imported by the SDK's UIKit public headers.
-            if([sdkVersion isEqual:@"26.0"])[arguments addObjectsFromArray:@[@"-DTARGET_OS_IPHONE=1",@"-DTARGET_OS_IOS=1",@"-DTARGET_OS_MAC=1",@"-DTARGET_OS_OSX=0",@"-DTARGET_OS_MACCATALYST=0",@"-F",[sdk stringByAppendingPathComponent:@"System/Library/SubFrameworks"]]];
-            [arguments addObjectsFromArray:@[@"-I", [originalSources[index] stringByDeletingLastPathComponent], @"-I", inputSource.stringByDeletingLastPathComponent, @"-internal-isystem", [sdk stringByAppendingPathComponent:@"usr/include/libxml2"]]];
-            for (NSString *relative in config[@"includeDirectories"]) {
-                NSString *path = [relative isEqualToString:@"."] ? projectDirectory : projectPath(projectDirectory, relative);
-                if (path) [arguments addObjectsFromArray:@[@"-I", path]];
-            }
-            for (NSString *define in config[@"defines"]) if ([define isKindOfClass:NSString.class]) [arguments addObjectsFromArray:@[@"-D", define]];
-            for (NSString *flag in config[@"warningFlags"]) if ([flag isKindOfClass:NSString.class] && ([flag hasPrefix:@"-W"]||[flag isEqual:@"-w"])) [arguments addObject:flag];
-            NSString *prefix = projectPath(projectDirectory, config[@"prefixHeader"]);
-            if (prefix) [arguments addObjectsFromArray:@[@"-include", prefix]];
-            for(NSString *relative in config[@"forcedIncludes"]){NSString *forced=projectPath(projectDirectory,relative);if(forced)[arguments addObjectsFromArray:@[@"-include",forced]];}
-            NSString *optimization = TFResolvedOptimization(config);
-            [arguments addObjectsFromArray:@[@"-debug-info-kind=standalone",@"-dwarf-version=4",@"-main-file-name",inputSource.lastPathComponent]];
-            if ([@[@"-O0", @"-O1", @"-O2", @"-O3", @"-Os", @"-Oz"] containsObject:optimization]) [arguments addObject:optimization];
-            if(objc){if(![config[@"objcArc"] isEqual:@NO])[arguments addObject:@"-fobjc-arc"];[arguments addObjectsFromArray:@[[@"-fobjc-runtime=ios-" stringByAppendingString:minimum],@"-fobjc-exceptions",@"-fexceptions"]];}
-            NSArray *cStandards=@[@"c89",@"gnu89",@"c99",@"gnu99",@"c11",@"gnu11",@"c17",@"gnu17"];
-            if(!cpp&&[cStandards containsObject:config[@"cStandard"]])[arguments addObject:[@"-std=" stringByAppendingString:config[@"cStandard"]]];
-            if (cpp) {
-                NSArray *standards=@[@"c++98",@"gnu++98",@"c++11",@"gnu++11",@"c++14",@"gnu++14",@"c++17",@"gnu++17",@"c++20",@"gnu++20"];
-                NSString *standard=[standards containsObject:config[@"cxxStandard"]]?config[@"cxxStandard"]:@"gnu++17";
-                [arguments addObjectsFromArray:@[[@"-std=" stringByAppendingString:standard], @"-fcxx-exceptions", @"-fexceptions"]];
-                [arguments insertObjects:@[@"-internal-isystem", [cppSDK stringByAppendingPathComponent:@"usr/include/c++/v1"]] atIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(2, 2)]];
-            }
-            [arguments addObjectsFromArray:@[@"-x", language, inputSource, @"-o", object]];
-            [commands addObject:arguments];
-            [objects addObject:object];
-            [compileSources addObject:[originalSources[index] substringFromIndex:projectDirectory.length+1]];
-        }
-        NSMutableArray *link = [@[@"ld64.lld", @"-dylib", @"-arch", cpu, @"-platform_version", @"ios", minimum, sdkVersion, @"-syslibroot", sdk, @"-lSystem", @"-lobjc", @"-lc++", @"-framework", @"Foundation", @"-framework", @"UIKit", @"-F", vendorFrameworks, @"-rpath", [packageScheme isEqual:@"rootless"]?@"/var/jb/Library/Frameworks":[packageScheme isEqual:@"roothide"]?@"@loader_path/.jbroot/Library/Frameworks":@"/Library/Frameworks", @"-undefined", @"dynamic_lookup", @"-install_name", [NSString stringWithFormat:[packageScheme isEqual:@"roothide"]?@"@loader_path/.jbroot/Library/MobileSubstrate/DynamicLibraries/%@.dylib":@"@rpath/%@.dylib", tweakName]] mutableCopy];
-        link = [TMCPackageLinkArguments(link, packageScheme, vendorFrameworks, tweakName) mutableCopy];
-        for (NSString *framework in config[@"frameworks"]) [link addObjectsFromArray:@[@"-framework", framework]];
-        for (NSString *library in config[@"libraries"]) [link addObject:[@"-l" stringByAppendingString:library]];
-        [link addObjectsFromArray:objects];
-        [link addObjectsFromArray:@[@"-o", [build stringByAppendingPathComponent:dylibName]]];
-        [commands addObject:link];
-        TMCLog(log, "source count=%lu; compile all objects, then link once\n", (unsigned long)projectSources.count);
-        NSString *inputFingerprint=TFAIBuildInputFingerprint(projectDirectory,config);NSString *checkpointCache=self.checkpointCacheDirectory?:[NSSearchPathForDirectoriesInDomains(NSCachesDirectory,NSUserDomainMask,YES).firstObject stringByAppendingPathComponent:@"WorkbenchBuildCheckpoints"];
-        NSMutableArray *results = [NSMutableArray array];
-        BOOL compileFailed = NO;
-        for (NSArray<NSString *> *arguments in commands) {
-            if(self.cancelRequested){compileFailed=YES;TMCLog(log,"BUILD CANCELLED at command boundary\n");break;}
-            if ([arguments.firstObject isEqualToString:@"ld64.lld"] && compileFailed) break;
-            NSUInteger progress = results.count;
-            NSString *label = progress < compileSources.count ? [NSString stringWithFormat:@"编译 %lu/%lu：%@", (unsigned long)progress + 1, (unsigned long)compileSources.count, compileSources[progress]] : @"正在链接所有对象…";
-            dispatch_async(dispatch_get_main_queue(), ^{ self.console.text = label;if(self.buildProgress)self.buildProgress(label,(double)progress/MAX(1,commands.count)); });
-            NSString *command = [arguments componentsJoinedByString:@" "];
-            TMCLog(log, "\n$ %s\n", command.UTF8String); fflush(log);
-            BOOL objectStep=progress<compileSources.count;NSString *objectPath=objectStep?objects[progress]:nil;BOOL reused=objectStep&&TFAIBuildRestoreObject(inputFingerprint,arguments,projectDirectory,build,objectPath,checkpointCache);
-            int status = reused?0:runTool(arguments, input, log);
-            if(reused)TMCLog(log,"RESUMED verified object checkpoint\n");
-            if(status==0&&objectStep&&!reused)TFAIBuildSaveObject(inputFingerprint,arguments,projectDirectory,build,objectPath,checkpointCache);
-            TMCLog(log, "\nexit=%d\n", status); fflush(log);
-            NSUInteger step = results.count;
-            [results addObject:@{@"command": command, @"exit": @(status), @"reusedCheckpoint":@(reused), @"stage":step < compileSources.count ? @"compile" : @"link", @"source":step < compileSources.count ? compileSources[step] : @"all objects"}];
-            [[NSJSONSerialization dataWithJSONObject:@{@"schema":@1,@"inputFingerprint":inputFingerprint?:@"unavailable",@"completedCommands":results,@"cancelRequested":@(self.cancelRequested)} options:NSJSONWritingPrettyPrinted error:nil] writeToFile:[build stringByAppendingPathComponent:@"checkpoint.json"] atomically:YES];
-            if (status != 0) {
-                compileFailed = YES;
-                if (![config[@"collectErrors"] isEqual:@YES]) break;
+        typeof(self) self = weakSelf; if (!self) return;
+        [[NSFileManager defaultManager] createDirectoryAtPath:build withIntermediateDirectories:YES attributes:nil error:NULL];
+        BOOL ok = [self tryTheosBuildProject:projectDirectory buildDir:build];
+        NSMutableArray *artifacts = [NSMutableArray array];
+        if (ok) {
+            NSString *packages = [projectDirectory stringByAppendingPathComponent:@"packages"];
+            for (NSString *name in [[NSFileManager defaultManager] contentsOfDirectoryAtPath:packages error:NULL] ?: @[]) {
+                if (![@[@"deb", @"dylib", @"tipa"] containsObject:name.pathExtension.lowercaseString]) continue;
+                NSString *source = [packages stringByAppendingPathComponent:name];
+                NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:source error:NULL];
+                if ([attrs[NSFileModificationDate] timeIntervalSince1970] < startedAt - 1) continue;
+                NSString *dest = [build stringByAppendingPathComponent:name];
+                [[NSFileManager defaultManager] removeItemAtPath:dest error:NULL];
+                if ([[NSFileManager defaultManager] copyItemAtPath:source toPath:dest error:NULL]) [artifacts addObject:name];
             }
         }
-        // LLVM 14 LLD accepts -arch arm64e but emits ARM64_ALL. Reject it before packaging.
-        if(!compileFailed&&[cpu isEqual:@"arm64e"]){NSData *linked=[NSData dataWithContentsOfFile:[build stringByAppendingPathComponent:dylibName]];struct mach_header_64 mh={0};if(linked.length>=sizeof(mh))[linked getBytes:&mh length:sizeof(mh)];if((mh.cpusubtype&0xffffff)!=2){compileFailed=YES;TMCLog(log,"error: 当前内嵌 LLVM 14 链接器将 arm64e 输出为 arm64，已停止打包。请在项目设置选择 arm64；iphoneos-arm64e 隐根包可使用 arm64 动态库。真正 arm64e ABI 需要更新链接器。\n");[NSFileManager.defaultManager removeItemAtPath:[build stringByAppendingPathComponent:dylibName] error:nil];}}
-        BOOL toolSuccess = !self.cancelRequested && !compileFailed && projectSources.count > 0 && results.count == commands.count && [results.lastObject[@"exit"] intValue] == 0;
-        NSMutableDictionary *releaseIndexes=[NSMutableDictionary new];NSMutableArray *symbolProcessing=[NSMutableArray new];NSError *symbolError=nil;
-        BOOL stripSymbols=TFShouldStripSymbols(config);
-        if(toolSuccess&&stripSymbols){toolSuccess=TMCProcessReleaseSymbols(link,dylibName,packageScheme,build,input,log,releaseIndexes,symbolProcessing,&symbolError);if(!toolSuccess)[NSFileManager.defaultManager removeItemAtPath:[build stringByAppendingPathComponent:dylibName] error:nil];}
-        if(toolSuccess && !TMCValidateDylibSignature([NSData dataWithContentsOfFile:[build stringByAppendingPathComponent:dylibName]], &symbolError)) { toolSuccess=NO; TMCLog(log,"签名验证失败：%s\n",symbolError.localizedDescription.UTF8String); [NSFileManager.defaultManager removeItemAtPath:[build stringByAppendingPathComponent:dylibName] error:nil]; }
-        NSMutableDictionary *report = [@{@"execution": @"embedded iOS frameworks", @"commands": results, @"logos":logosResults, @"sourceCount":@(projectSources.count), @"success":@NO, @"projectName":tweakName,@"packageScheme":packageScheme,@"cpuArchitecture":cpu,@"sdkVersion":sdkVersion,@"deploymentTarget":minimum} mutableCopy];
-        report[@"signatureVerified"]=@(toolSuccess);
-        report[@"cachePolicy"]=self.checkpointCacheDirectory?@"clean_current_project_current_session":@"manual";report[@"stripSymbols"]=@(stripSymbols);report[@"symbolProcessing"]=symbolProcessing;if(symbolError)report[@"packageError"]=symbolError.localizedDescription;
-        NSMutableArray *artifacts = [NSMutableArray arrayWithObject:dylibName];
-        for (NSString *object in objects) [artifacts addObject:object.lastPathComponent];
-        for (NSString *name in artifacts) {
-            NSData *data = [NSData dataWithContentsOfFile:[build stringByAppendingPathComponent:name]];
-            if (data.length >= sizeof(struct mach_header_64)) {
-                struct mach_header_64 header; [data getBytes:&header length:sizeof(header)];
-                report[name] = @{@"bytes": @(data.length), @"magic": @(header.magic), @"cputype": @(header.cputype), @"cpusubtype":@(header.cpusubtype), @"filetype": @(header.filetype)};
-            }
-        }
-        BOOL shouldPackage=[config[@"package"] boolValue];
-        NSMutableArray *namedArtifacts=[NSMutableArray new],*packages=[NSMutableArray new],*variantReports=[NSMutableArray new];
-        if(toolSuccess&&!shouldPackage){report[@"success"]=@YES;report[@"packageSkipped"]=@"Dynamic library build requested";[namedArtifacts addObject:dylibName];}
-        if(toolSuccess&&shouldPackage){BOOL allPassed=YES;
-          for(NSString *scheme in packageSchemes){
-            if(self.cancelRequested){allPassed=NO;break;}
-            NSDictionary *context=TMCNamingContextForScheme(namingContext,scheme);
-            NSError *error=nil;NSString *variantDylib=TMCVariantOutputFilename(dylibPattern,@"dylib",context,packageSchemes,scheme,&error),*variantDeb=TMCVariantOutputFilename(debPattern,@"deb",context,packageSchemes,scheme,&error);
-            if(![scheme isEqual:packageScheme]){NSString *cache=[build stringByAppendingPathComponent:@".package-link-cache"];[NSFileManager.defaultManager createDirectoryAtPath:cache withIntermediateDirectories:YES attributes:nil error:nil];variantDylib=[@".package-link-cache" stringByAppendingPathComponent:[scheme stringByAppendingPathExtension:@"dylib"]];}else variantDylib=dylibName;
-            if(!variantDylib||!variantDeb){allPassed=NO;report[@"outputNamingError"]=error.localizedDescription?:@"文件名无效";break;}
-            TMCLog(log,"\n打包目标：%s\n",scheme.UTF8String);
-            NSMutableArray *variantLink=[TMCPackageLinkArguments(link, scheme, vendorFrameworks, tweakName) mutableCopy];
-            if(![scheme isEqual:packageScheme]){NSUInteger pathIndex=[variantLink indexOfObject:@"-rpath"],installIndex=[variantLink indexOfObject:@"-install_name"],outputIndex=[variantLink indexOfObject:@"-o"];
-             variantLink[pathIndex+1]=[scheme isEqual:@"rootless"]?@"/var/jb/Library/Frameworks":[scheme isEqual:@"roothide"]?@"@loader_path/.jbroot/Library/Frameworks":@"/Library/Frameworks";
-             variantLink[installIndex+1]=[NSString stringWithFormat:[scheme isEqual:@"roothide"]?@"@loader_path/.jbroot/Library/MobileSubstrate/DynamicLibraries/%@.dylib":@"@rpath/%@.dylib",tweakName];variantLink[outputIndex+1]=[build stringByAppendingPathComponent:variantDylib];
-             TMCLog(log,"$ %s\n",[variantLink componentsJoinedByString:@" "].UTF8String);int status=runTool(variantLink,input,log);TMCLog(log,"exit=%d\n",status);[results addObject:@{@"command":[variantLink componentsJoinedByString:@" "],@"exit":@(status),@"stage":[@"link-" stringByAppendingString:scheme],@"source":@"all objects"}];if(status){allPassed=NO;report[@"packageError"]=[@"链接失败：" stringByAppendingString:scheme];break;}}
-            if(![scheme isEqual:packageScheme]&&stripSymbols&&!TMCProcessReleaseSymbols(variantLink,variantDylib,scheme,build,input,log,releaseIndexes,symbolProcessing,&error)){allPassed=NO;report[@"packageError"]=error.localizedDescription?:@"发布裁剪失败";[NSFileManager.defaultManager removeItemAtPath:[build stringByAppendingPathComponent:variantDylib] error:nil];break;}
-            NSData *dylib=[NSData dataWithContentsOfFile:[build stringByAppendingPathComponent:variantDylib]];
-            if (!TMCValidateDylibSignature(dylib, &error)) { allPassed=NO; report[@"packageError"]=error.localizedDescription; TMCLog(log,"签名验证失败：%s\n",error.localizedDescription.UTF8String); [NSFileManager.defaultManager removeItemAtPath:[build stringByAppendingPathComponent:variantDylib] error:nil]; break; }
-            if ([scheme isEqual:@"roothide"] && !TMCNativeRootHideImage(dylib, &error)) { allPassed=NO; report[@"packageError"]=error.localizedDescription; TMCLog(log,"package error: %s\n",error.localizedDescription.UTF8String); break; }
-            if(dylib&&[scheme isEqual:packageScheme])[namedArtifacts addObject:variantDylib];NSData *deb=nil;
-            if(!customMetadata)deb=TMCDebPackageForProject(dylib,tweakName,@"com.example.target",scheme,projectDirectory,config,&error);
-            else if(hasControl&&projectPlists.count==1){NSString *control=[NSString stringWithContentsOfFile:controlPath encoding:NSUTF8StringEncoding error:&error];NSData *filter=[NSData dataWithContentsOfFile:[projectDirectory stringByAppendingPathComponent:projectPlists.firstObject] options:0 error:&error];if(control&&filter){NSString *adjusted=TMCControlForScheme(control,scheme);deb=TMCDebPackageWithResources(dylib,tweakName,filter,adjusted,projectDirectory,scheme,config,&error);[adjusted writeToFile:[build stringByAppendingPathComponent:multipleSchemes?[@"control-" stringByAppendingString:scheme]:@"control"] atomically:YES encoding:NSUTF8StringEncoding error:nil];[filter writeToFile:[build stringByAppendingPathComponent:@"filter.plist"] atomically:YES];}}
-            else error=[NSError errorWithDomain:@"Compiler" code:5 userInfo:@{NSLocalizedDescriptionKey:@"请在项目设置填写目标 Bundle ID，并保存 control 和过滤 plist 后构建。"}];
-            NSString *path=[build stringByAppendingPathComponent:variantDeb];BOOL success=deb&&[deb writeToFile:path options:NSDataWritingAtomic error:&error];[variantReports addObject:@{@"scheme":scheme,@"success":@(success),@"dylib":variantDylib,@"deb":variantDeb,@"signatureVerified":@YES}];
-            if(success){self.lastPackage=path;NSDictionary *entry=@{@"name":variantDeb,@"bytes":@(deb.length),@"scheme":scheme};[packages addObject:entry];[namedArtifacts addObject:variantDeb];TMCLog(log,"Debian package generated: %s (%lu bytes)\n",path.UTF8String,(unsigned long)deb.length);}
-            else{allPassed=NO;report[@"packageError"]=error.localizedDescription?:@"打包失败";TMCLog(log,"package error: %s\n",[report[@"packageError"] UTF8String]);break;}
-          }
-          report[@"success"]=@(allPassed&&packages.count==packageSchemes.count&&packages.count>0);
-        }
-        if(packages.count)report[@"package"]=packages.firstObject;report[@"packages"]=packages;report[@"variants"]=variantReports;report[@"packageSchemes"]=packageSchemes;
-        report[@"outputNaming"]=@{@"debPattern":debPattern,@"dylibPattern":dylibPattern,@"context":namingContext,@"dylib":dylibName,@"deb":debName};
-        if(self.cancelRequested){report[@"success"]=@NO;report[@"packageError"]=@"构建已取消；保留检查点供重新审批后续跑。";}
-        report[@"cancelled"]=@(self.cancelRequested);report[@"checkpoint"]=@"checkpoint.json";
-        report[@"provenance"]=provenance;
-        report[@"runtimeVerified"]=@NO;report[@"sdkSettings"]=sdkSettings;
-        NSMutableArray *symbolImages=[NSMutableArray new];
-        NSMutableOrderedSet *imagePaths=[NSMutableOrderedSet orderedSetWithObject:dylibName];
-        for(NSDictionary *variant in variantReports)if(variant[@"dylib"])[imagePaths addObject:variant[@"dylib"]];
-        for(NSString *imagePath in imagePaths){NSMutableDictionary *index=[(releaseIndexes[imagePath]?:TFBinaryIndex([NSData dataWithContentsOfFile:[build stringByAppendingPathComponent:imagePath]])) mutableCopy];if([index[@"uuid"] length]){index[@"file"]=imagePath;[symbolImages addObject:index];}}
-        report[@"binaryImages"]=symbolImages;
-        NSData *symbolData=[NSJSONSerialization dataWithJSONObject:@{@"schema":@1,@"images":symbolImages,@"provenance":report[@"provenance"]} options:NSJSONWritingPrettyPrinted error:nil];
-        [symbolData writeToFile:[build stringByAppendingPathComponent:@"symbols.json"] atomically:YES];
-        TMCLog(log,"运行验证：尚未在宿主中验证；构建通过不代表运行无误。\n");
-        BOOL exportDylib=[config[@"exportDylib"] boolValue];report[@"exportDylib"]=@(exportDylib);
-        if(!exportDylib&&shouldPackage&&[report[@"success"] boolValue]){for(NSString *name in [namedArtifacts copy])if([name.pathExtension isEqual:@"dylib"]){[NSFileManager.defaultManager removeItemAtPath:[build stringByAppendingPathComponent:name] error:nil];[namedArtifacts removeObject:name];}TMCLog(log,"仅导出 DEB：动态库已包含在安装包中。\n");}
-        if(!exportDylib&&!shouldPackage){report[@"success"]=@NO;report[@"packageError"]=@"请在构建设置至少勾选 dylib 或 deb。";for(NSString *name in [namedArtifacts copy]){[NSFileManager.defaultManager removeItemAtPath:[build stringByAppendingPathComponent:name] error:nil];}[namedArtifacts removeAllObjects];}
-        report[@"namedArtifacts"]=namedArtifacts;
-        report[@"startedAt"]=@(startedAt);
-        report[@"finishedAt"]=@(NSDate.date.timeIntervalSince1970);
-        report[@"durationSeconds"]=@(NSProcessInfo.processInfo.systemUptime-startedUptime);
-        TMCLog(log,"%s · %lu 个源码 · 耗时 %.2f 秒\n",[report[@"success"] boolValue]?"构建成功":"构建失败",(unsigned long)projectSources.count,[report[@"durationSeconds"] doubleValue]);
-        for(NSString *artifact in namedArtifacts){NSDictionary *a=[NSFileManager.defaultManager attributesOfItemAtPath:[build stringByAppendingPathComponent:artifact] error:nil];TMCLog(log,"生成文件：%s · %s\n",artifact.UTF8String,[NSByteCountFormatter stringFromByteCount:a.fileSize countStyle:NSByteCountFormatterCountStyleFile].UTF8String);}
-        TMCLog(log,"签名状态：所有成功导出的动态库均已通过 ad-hoc 签名页哈希验证；设备加载仍需目标环境实测。\n");
-        NSData *json = [NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
-        [json writeToFile:[build stringByAppendingPathComponent:@"report.json"] atomically:YES];
-        fflush(log);
-        NSString *text = [NSString stringWithContentsOfFile:logPath encoding:NSUTF8StringEncoding error:nil] ?: @"No log";
-        fclose(input); fclose(log);
-        TMCDocumentPublishBuild(documents,build,nil);
+        NSDictionary *report = @{@"success": @(ok), @"engine": @"theos-make",
+                                 @"startedAt": @(startedAt), @"finishedAt": @(NSDate.date.timeIntervalSince1970),
+                                 @"namedArtifacts": artifacts};
+        [[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:NULL]
+            writeToFile:[build stringByAppendingPathComponent:@"report.json"] atomically:YES];
         dispatch_async(dispatch_get_main_queue(), ^{
-            TFScreenAwakeSet(@"build",NO);
-            self.console.text = [NSString stringWithFormat:@"%@ · %lu 个源码\n日志与产物已保存，可导出完整文件。", [report[@"success"] boolValue] ? @"构建成功" : @"构建失败", (unsigned long)projectSources.count];
+            self.lastPackage = artifacts.firstObject ? [build stringByAppendingPathComponent:artifacts.firstObject] : nil;
+            self.console.text = [(self.console.text ?: @"") stringByAppendingString:
+                ok ? @"BUILD SUCCEEDED — 工具链（Theos / make）\n" : @"BUILD FAILED — 工具链（Theos / make）\n"];
+            TFScreenAwakeSet(@"build", NO);
             self.navigationItem.rightBarButtonItem.enabled = YES;
             self.navigationItem.leftBarButtonItem.enabled = YES;
             ((UIBarButtonItem *)self.toolbarItems.firstObject).enabled = YES;
             self.hasBuilt = NO; TMCBuildRunning = NO;
-            if (self.buildCompletion) self.buildCompletion([report[@"success"] boolValue]);
+            if (self.buildCompletion) self.buildCompletion(ok);
         });
     });
 }

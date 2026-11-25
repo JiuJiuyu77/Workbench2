@@ -181,31 +181,26 @@ static BOOL WBFileExists(NSString *p) {
                                        hint:@"需要更高 SDK 时可在「安装工具」中下载"]];
     }
 
-    // 4. 编译链三件套（进程内 LLVM 路线，所以查 xcframework 而非外部 clang）
-    [items addObject:[self xcframeworkItem:@"clang" sliceDir:@"ios-arm64" required:YES]];
-    [items addObject:[self xcframeworkItem:@"libLLVM" sliceDir:@"ios-arm64" required:YES]];
-    [items addObject:[self xcframeworkItem:@"lld" sliceDir:@"ios-arm64" required:YES]];
-
-    // 5. Perl（Logos 预处理依赖）
-    NSString *perl = [root stringByAppendingPathComponent:@"Perl"];
-    if (WBPathIsDir(perl)) {
-        [items addObject:[WBHealthItem item:@"perl" title:@"Perl 运行时"
-                                      level:WBHealthLevelOK detail:@"Resources/Perl 存在" hint:nil]];
-    } else {
-        [items addObject:[WBHealthItem item:@"perl" title:@"Perl 运行时"
-                                      level:WBHealthLevelFail detail:@"缺少 Resources/Perl"
-                                       hint:@"编译 .x 文件需要 perl，请补齐资源"]];
-    }
-
-    // 6. clang 头文件
-    NSString *inc = [root stringByAppendingPathComponent:@"ClangInclude"];
-    if (WBPathIsDir(inc)) {
-        [items addObject:[WBHealthItem item:@"clanginclude" title:@"Clang 头文件"
-                                      level:WBHealthLevelOK detail:@"Resources/ClangInclude 存在" hint:nil]];
-    } else {
-        [items addObject:[WBHealthItem item:@"clanginclude" title:@"Clang 头文件"
-                                      level:WBHealthLevelWarn detail:@"缺少 Resources/ClangInclude"
-                                       hint:@"部分编译选项会不可用"]];
+    // 4. 内置工具链（当前唯一构建路线：Theos / make）
+    NSString *tc = [root stringByAppendingPathComponent:@"Toolchain"];
+    if (!WBPathIsDir(tc)) tc = root;   // 兼容平铺布局
+    NSArray *checks = @[
+        @[@"clang-16", @"theos-root/usr/bin/clang-16", @"编译器"],
+        @[@"ld64", @"theos-root/usr/bin/ld64", @"链接器"],
+        @[@"ldid", @"theos-root/usr/bin/ldid", @"签名工具"],
+        @[@"make", @"theos-root/usr/bin/make", @"构建工具"],
+        @[@"perl", @"theos-root/usr/bin/perl", @"Perl（Logos 预处理）"],
+        @[@"ollvm", @"ollvm/bin/clang", @"OLLVM 混淆编译器"],
+        @[@"r2", @"reverse/bin/r2", @"逆向工具 radare2"],
+        @[@"swiftc", @"swift-toolchain/usr/bin/swiftc", @"Swift 编译器"],
+    ];
+    for (NSArray *row in checks) {
+        NSString *path = [tc stringByAppendingPathComponent:row[1]];
+        BOOL exists = [NSFileManager.defaultManager fileExistsAtPath:path];
+        [items addObject:[WBHealthItem item:row[0] title:row[2]
+                                      level:exists ? WBHealthLevelOK : WBHealthLevelFail
+                                     detail:exists ? row[1] : [@"缺少 " stringByAppendingString:row[1]]
+                                       hint:exists ? nil : @"请重新安装 ipa（全内置版本自带工具链）"]];
     }
 
     // 7. 磁盘空间
