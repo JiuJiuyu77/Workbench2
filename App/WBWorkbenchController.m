@@ -13,10 +13,10 @@
 #import "WBRemoteController.h"
 #import "Runtime/Sandbox/TFAIISHHub.h"
 
-@interface WBWorkbenchController : UITableViewController
+@interface WBWorkbenchViewController : UITableViewController
 @end
 
-@implementation WBWorkbenchController
+@implementation WBWorkbenchViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -123,5 +123,5 @@
 @end
 
 UIViewController *WBWorkbenchController(void) {
-    return [[TMCNavigationController alloc] initWithRootViewController:[WBWorkbenchController new]];
+    return [[TMCNavigationController alloc] initWithRootViewController:[WBWorkbenchViewController new]];
 }

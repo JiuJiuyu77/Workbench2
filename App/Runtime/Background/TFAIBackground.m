@@ -1,10 +1,12 @@
 #import "TFAIBackground.h"
 #import "TFScreenAwake.h"
+
+// Live Activity 已移除；构建进度仍记录在后台任务里。
+static void TFAILiveUpdate(NSString *stage, NSUInteger percent, NSUInteger total) { (void)stage; (void)percent; (void)total; }
+static void TFAILiveEnd(BOOL success) { (void)success; }
 #if !defined(TFAI_BACKGROUND_FIXTURE)
 #import "WBRemoteAudio.h"
 #else
-static void TFAILiveUpdate(NSString *s,NSUInteger c,NSUInteger n){}
-static void TFAILiveEnd(BOOL success){}
 static BOOL TestAudioEnabled=NO,TestAudioPlaying=NO,TestAudioStartOK=YES;
 static BOOL WBRemoteAudioEnabled(void){return TestAudioEnabled;}
 static BOOL WBRemoteAudioStart(void){return TestAudioPlaying=TestAudioEnabled&&TestAudioStartOK;}
