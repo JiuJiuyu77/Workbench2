@@ -6,6 +6,10 @@ extern BOOL TMCBuildIsRunning(void);
 #import "../Background/TFAINotifications.h"
 #import "../LiveActivity/TFAILiveActivity.h"
 #import "../UIHelpers.h"
+NSError *TFAIError(NSInteger code, NSString *message){
+    return [NSError errorWithDomain:@"Workbench.BuildQueue" code:code
+                           userInfo:@{NSLocalizedDescriptionKey: message ?: @"构建队列错误"}];
+}
 #include "TFAIBuildQueueCore.inc"
 @interface TFAIBuildTasks : UITableViewController
 @property NSTimer *timer;
