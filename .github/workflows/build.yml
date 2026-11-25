@@ -236,6 +236,13 @@ jobs:
           meson --version
           ninja --version
 
+      - name: 体积核对
+        run: |
+          set -euo pipefail
+          du -sh BundledToolchain
+          du -sh BundledToolchain/swift-toolchain || echo "no swift-toolchain"
+          ls BundledToolchain/swift-toolchain/usr/bin | head -5 || true
+
       - name: 构建
         id: build
         run: |

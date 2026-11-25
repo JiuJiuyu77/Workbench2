@@ -157,7 +157,10 @@ if _bundled_tc.is_dir() and any(_bundled_tc.iterdir()):
         'builtAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'source': 'SparkTheosRuntimeV3',
     }, ensure_ascii=False))
-    print('Bundled toolchain: %d files' % sum(1 for _ in _tc_dest.rglob('*')))
+    _sz = sum(f.stat().st_size for f in _bundled_tc.rglob('*') if f.is_file() and not f.is_symlink())
+    print('Bundled toolchain: %d files, %.1f MB (swiftc=%s)' % (
+        sum(1 for _ in _tc_dest.rglob('*')), _sz / 1048576.0,
+        'yes' if (_tc_dest / 'swift-toolchain/usr/bin/swiftc').exists() else 'no'))
     # Theos 需要 $THEOS/sdks 下有真实 SDK。运行时包没带时，用仓库里的 16.5 SDK 补上，
     # 保证「全内置」在离线环境也能直接 make。
     _sdks = _tc_dest / 'sdks'
