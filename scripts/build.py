@@ -9,6 +9,7 @@ import subprocess
 import tarfile
 import zipfile
 import hashlib
+import time
 import gzip
 import json
 from build_sdk import select_sdk
@@ -143,6 +144,34 @@ for resource in resources:
                     ignore=shutil.ignore_patterns('.git', '*.bundle', '*.dylib', '*.a', '*.o'))
 if _missing_res:
     print('warn: 以下资源目录缺失，已跳过：' + ', '.join(_missing_res))
+# 全内置的 Work1 工具链（Theos + OLLVM + 逆向工具 + SDK），由 CI 下载后放在 BundledToolchain/。
+# 直接进 App 包，SPToolchainInstaller 会优先使用包内这份（不复制到 Documents）。
+# 构建引擎随之走 Theos/make 新协议，不再回退进程内编译。
+_bundled_tc = ROOT / 'BundledToolchain'
+if _bundled_tc.is_dir() and any(_bundled_tc.iterdir()):
+    _tc_dest = app / 'Toolchain'
+    if _tc_dest.exists():
+        shutil.rmtree(_tc_dest)
+    shutil.copytree(_bundled_tc, _tc_dest, symlinks=True)
+    (_tc_dest / 'manifest.json').write_text(json.dumps({
+        'builtAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'source': 'SparkTheosRuntimeV3',
+    }, ensure_ascii=False))
+    print('Bundled toolchain: %d files' % sum(1 for _ in _tc_dest.rglob('*')))
+    # Theos 需要 $THEOS/sdks 下有真实 SDK。运行时包没带时，用仓库里的 16.5 SDK 补上，
+    # 保证「全内置」在离线环境也能直接 make。
+    _sdks = _tc_dest / 'sdks'
+    if not any(_sdks.glob('iPhoneOS*.sdk')):
+        _sdks.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(ROOT / 'Resources/SDK16.5.tar.gz', 'r:gz') as _tf:
+            _tf.extractall(_sdks)
+        _inner = list(_sdks.glob('iPhoneOS*.sdk'))
+        if len(_inner) == 1 and _inner[0].parent != _sdks:
+            for _child in _inner[0].iterdir():
+                shutil.move(str(_child), str(_sdks / _child.name))
+            _inner[0].rmdir()
+        print('Bundled SDK: %s' % ', '.join(p.name for p in _sdks.glob('iPhoneOS*.sdk')))
+
 # Alpine userspace and signed offline developer kit used by the embedded runtime.
 ish_rootfs = ROOT / 'Resources' / 'iSH'
 if ish_rootfs.exists():
@@ -372,6 +401,23 @@ if profile_rights:
     main_sign_flags=['--entitlements',str(main_rights)]
     activity_flags=['--profile',str(args.activity_profile),'--entitlements',str(activity_rights)]
 subprocess.run(['python3',str(ROOT / 'scripts/build_live_activity.py'),'--app',str(app),'--build',info['CFBundleVersion'],'--identity',args.identity,'--bundle-id',args.bundle_id + '.activity']+activity_flags+(['--simulator'] if args.simulator else []),check=True)
+def _macho(path):
+    try:
+        with open(path, 'rb') as handle:
+            magic = handle.read(4)
+    except OSError:
+        return False
+    return magic in (b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca')
+
+if (_bundled_tc.is_dir() and any(_bundled_tc.iterdir()) and not args.simulator):
+    _signed = 0
+    for _path in (app / 'Toolchain').rglob('*'):
+        if not _path.is_file() or _path.is_symlink() or not _macho(_path):
+            continue
+        subprocess.run(['codesign', '--force', '--sign', args.identity, str(_path)],
+                       check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _signed += 1
+    print('Bundled toolchain Mach-O signed: %d' % _signed)
 subprocess.run(['codesign','--force','--sign',args.identity,*main_sign_flags,str(app)],check=True)
 if not args.simulator:
     package_kind = 'signed' if profile_rights else 'unsigned'

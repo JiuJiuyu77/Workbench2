@@ -638,18 +638,25 @@ extern UIViewController *TMCStorageBackup258Regression(void);
         NSString *source=self.importedSource;
         if(!self.importedProject&&!source){source=[build stringByAppendingPathComponent:@"smoke.m"];[@"#import <Foundation/Foundation.h>\n@interface MobileSmoke : NSObject\n-(NSString*)message;\n@end\n@implementation MobileSmoke\n-(NSString*)message { return @\"Built inside iOS\"; }\n@end\n" writeToFile:source atomically:YES encoding:NSUTF8StringEncoding error:nil];}
         NSString *projectDirectory=self.importedProject?:source.stringByDeletingLastPathComponent;
-        // 新架构优先：Theos + make；失败或不适用时自动回退到下方内嵌编译
-        if ([self tryTheosBuildProject:projectDirectory buildDir:build]) {
+        // Work1 工具链全走新协议（Theos + make）。
+        // 只要工具链已就位，就不允许回退到进程内 LLVM 编译：
+        // 两条链路用的 clang / SDK / 混淆器不同，混用会让产物和问题定位都对不上。
+        if ([SPToolchainInstaller shared].isInstalled) {
+            BOOL ok = [self tryTheosBuildProject:projectDirectory buildDir:build];
             dispatch_async(dispatch_get_main_queue(), ^{
-                self.console.text = [self.console.text stringByAppendingString:@"BUILD SUCCEEDED — 新架构（Theos）\n"];
+                self.console.text = [self.console.text stringByAppendingString:
+                    ok ? @"BUILD SUCCEEDED — 工具链（Theos / make）\n"
+                       : @"BUILD FAILED — 工具链（Theos / make），本版不回退进程内编译\n"];
                 TMCBuildRunning = NO;
                 TFScreenAwakeSet(@"build", NO);
                 self.navigationItem.rightBarButtonItem.enabled = YES;
                 self.navigationItem.leftBarButtonItem.enabled = YES;
                 ((UIBarButtonItem *)self.toolbarItems.firstObject).enabled = YES;
+                if (self.buildCompletion) self.buildCompletion(ok);
             });
             return;
         }
+        TMCLog(NULL, "工具链未安装：本次使用进程内编译（安装内置工具链后会自动改走 Theos）\n");
         NSDictionary *config = TMCEffectiveBuildOptions(projectConfig(projectDirectory),NSUserDefaults.standardUserDefaults);
         NSString *debPattern=config[@"outputPattern-deb"]?:globalDebPattern,*dylibPattern=[config[@"exportDylib"] boolValue]?(config[@"outputPattern-dylib"]?:globalDylibPattern):@"{product}";
         NSMutableArray<NSString *> *projectSources = [sourcePaths(projectDirectory) mutableCopy];
