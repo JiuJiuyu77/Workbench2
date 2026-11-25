@@ -173,6 +173,21 @@ jobs:
           SHA="$(python3 -c "import json;print([r for r in json.load(open('Resources/DownloadResources.json')) if r['id']=='theos-extras'][0]['sha256'])")"
           echo "$SHA  WorkbenchExtras.tar.gz" | shasum -a 256 -c -
 
+      - name: 缓存 Swift 工具链
+        id: swift-cache
+        uses: actions/cache@v4
+        with:
+          path: SwiftToolchain.deb
+          key: swift-toolchain-${{ hashFiles('Resources/DownloadResources.json') }}
+
+      - name: 下载 Swift 工具链（缺缓存时）
+        if: steps.swift-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          URL="$(python3 -c "import json;print([r for r in json.load(open('Resources/DownloadResources.json')) if r['id']=='swift-toolchain'][0]['url'])")"
+          curl -L --retry 3 --retry-delay 5 -o SwiftToolchain.deb "$URL"
+          ls -lh SwiftToolchain.deb
+
       - name: 展开内置工具链
         run: |
           set -euo pipefail
@@ -189,6 +204,19 @@ jobs:
           ls BundledToolchain | head -20
           du -sh BundledToolchain
           test -x BundledToolchain/ollvm/bin/clang || { echo "::error::缺 ollvm/bin/clang"; exit 1; }
+          # Swift 工具链：deb → data.tar.* → usr/，放到 swift-toolchain/usr（安装器按这个路径找 swiftc）
+          rm -rf /tmp/swiftdeb && mkdir -p /tmp/swiftdeb
+          ( cd /tmp/swiftdeb && ar x "$GITHUB_WORKSPACE/SwiftToolchain.deb" )
+          mkdir -p /tmp/swiftdeb/root
+          tar xf /tmp/swiftdeb/data.tar.* -C /tmp/swiftdeb/root
+          mkdir -p BundledToolchain/swift-toolchain
+          if [ -d /tmp/swiftdeb/root/usr ]; then
+            cp -R /tmp/swiftdeb/root/usr BundledToolchain/swift-toolchain/
+          else
+            cp -R /tmp/swiftdeb/root/. BundledToolchain/swift-toolchain/
+          fi
+          ls BundledToolchain/swift-toolchain | head
+          find BundledToolchain/swift-toolchain -name swiftc -maxdepth 4 | head
           ls BundledToolchain/reverse/bin | head -5
 
       - name: 安装 meson / ninja（iSH 沙盒构建）
