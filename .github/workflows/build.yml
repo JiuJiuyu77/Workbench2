@@ -177,16 +177,18 @@ jobs:
         id: swift-cache
         uses: actions/cache@v4
         with:
-          path: SwiftToolchain.deb
-          key: swift-toolchain-${{ hashFiles('Resources/DownloadResources.json') }}
+          path: SwiftToolchain.tar.gz
+          key: swift-toolchain-v2-${{ hashFiles('Resources/DownloadResources.json') }}
 
       - name: 下载 Swift 工具链（缺缓存时）
         if: steps.swift-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           URL="$(python3 -c "import json;print([r for r in json.load(open('Resources/DownloadResources.json')) if r['id']=='swift-toolchain'][0]['url'])")"
-          curl -L --retry 3 --retry-delay 5 -o SwiftToolchain.deb "$URL"
-          ls -lh SwiftToolchain.deb
+          curl -L --retry 3 --retry-delay 5 -o SwiftToolchain.tar.gz "$URL"
+          SHA="$(python3 -c "import json;print([r for r in json.load(open('Resources/DownloadResources.json')) if r['id']=='swift-toolchain'][0]['sha256'])")"
+          echo "$SHA  SwiftToolchain.tar.gz" | shasum -a 256 -c -
+          ls -lh SwiftToolchain.tar.gz
 
       - name: 展开内置工具链
         run: |
@@ -213,31 +215,12 @@ jobs:
             [ -d "BundledToolchain/$d" ] && find "BundledToolchain/$d" -type f -exec chmod +x {} +
           done
           test -x BundledToolchain/ollvm/bin/clang || { echo "::error::缺 ollvm/bin/clang"; exit 1; }
-          # Swift 工具链：deb → data.tar.* → usr/，放到 swift-toolchain/usr（安装器按这个路径找 swiftc）
-          rm -rf /tmp/swiftdeb && mkdir -p /tmp/swiftdeb
-          ( cd /tmp/swiftdeb && ar x "$GITHUB_WORKSPACE/SwiftToolchain.deb" )
-          mkdir -p /tmp/swiftdeb/root
-          tar xf /tmp/swiftdeb/data.tar.* -C /tmp/swiftdeb/root
+          # Swift 工具链：预解包的 usr/ 布局，直接展开即可（安装器按 swift-toolchain/usr/bin 找 swiftc）
+          rm -rf BundledToolchain/swift-toolchain
           mkdir -p BundledToolchain/swift-toolchain
-          if [ -d /tmp/swiftdeb/root/usr ]; then
-            cp -R /tmp/swiftdeb/root/usr BundledToolchain/swift-toolchain/
-          else
-            cp -R /tmp/swiftdeb/root/. BundledToolchain/swift-toolchain/
-          fi
-          # deb 的实际前缀不一定是 /usr（可能是 /opt/swift-*），按 swiftc 实际位置建 usr 链接，
-          # 安装器固定按 swift-toolchain/usr/bin 找 swiftc。
-          SWIFTC=$(find BundledToolchain/swift-toolchain -name swiftc -type f | head -1)
-          if [ -n "$SWIFTC" ]; then
-            SWIFT_USR=$(dirname "$(dirname "$SWIFTC")")
-            echo "swiftc: $SWIFTC (prefix $SWIFT_USR)"
-            if [ ! -d BundledToolchain/swift-toolchain/usr ]; then
-              ln -s "${SWIFT_USR#BundledToolchain/swift-toolchain/}" BundledToolchain/swift-toolchain/usr
-            fi
-            ls BundledToolchain/swift-toolchain/usr/bin | head -5
-          else
-            echo "::warning::Swift 工具链里没找到 swiftc"
-            find BundledToolchain/swift-toolchain -maxdepth 3 | head -20
-          fi
+          tar xzf SwiftToolchain.tar.gz -C BundledToolchain/swift-toolchain
+          chmod -R u+rwX,go+rX BundledToolchain/swift-toolchain
+          test -x BundledToolchain/swift-toolchain/usr/bin/swiftc || { echo "::error::缺 swiftc"; ls BundledToolchain/swift-toolchain/usr/bin | head; exit 1; }
           echo "---- 关键组件自检 ----"
           for f in theos-root/usr/bin/clang-16 theos-root/usr/bin/ldid theos-root/usr/bin/make theos-root/usr/bin/perl ollvm/bin/clang reverse/bin/mt-macho; do
             if [ -e "BundledToolchain/$f" ]; then echo "  OK  $f"; else echo "  MISS $f"; fi
