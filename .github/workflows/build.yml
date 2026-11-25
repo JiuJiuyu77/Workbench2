@@ -207,6 +207,11 @@ jobs:
           tar xzf WorkbenchExtras.tar.gz -C BundledToolchain
           ls BundledToolchain | head -20
           du -sh BundledToolchain
+          # 重新打包过的 extras 可能丢了执行位；统一恢复，再按目录补 +x
+          chmod -R u+rwX,go+rX BundledToolchain
+          for d in ollvm/bin reverse/bin theos-root/usr/bin theos-root/usr/lib/llvm-16/bin helpers; do
+            [ -d "BundledToolchain/$d" ] && find "BundledToolchain/$d" -type f -exec chmod +x {} +
+          done
           test -x BundledToolchain/ollvm/bin/clang || { echo "::error::缺 ollvm/bin/clang"; exit 1; }
           # Swift 工具链：deb → data.tar.* → usr/，放到 swift-toolchain/usr（安装器按这个路径找 swiftc）
           rm -rf /tmp/swiftdeb && mkdir -p /tmp/swiftdeb
