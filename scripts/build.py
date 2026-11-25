@@ -62,9 +62,21 @@ resources = ['CompatibilityRules', 'ThirdPartyNotices', 'GitHelp', 'HelpArticles
 if args.simulator:
     resources.append('SampleLogosGenerated')
     resources.append('SampleMultiObjectiveC')
+# RemoteWeb / FLEXProject 体积大且改动少，仓库里以压缩包形式保存（Resources/BundledUIAssets.tar.gz），
+# 构建时解到 build/assets 再按资源复制，避免仓库里几千个文件拖慢 checkout。
+_assets_dir = ROOT / 'build' / 'assets'
+_assets_tar = ROOT / 'Resources/BundledUIAssets.tar.gz'
+if _assets_tar.is_file():
+    if not (_assets_dir / 'Resources/RemoteWeb').is_dir():
+        shutil.rmtree(_assets_dir, ignore_errors=True)
+        _assets_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(_assets_tar, 'r:gz') as _tf:
+            _tf.extractall(_assets_dir)
 _missing_res = []
 for resource in resources:
     _src = ROOT / 'Resources' / resource
+    if not _src.is_dir():
+        _src = _assets_dir / 'Resources' / resource
     if not _src.is_dir():
         _missing_res.append(resource)
         continue
