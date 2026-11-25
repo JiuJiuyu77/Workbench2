@@ -194,11 +194,15 @@ jobs:
           rm -rf BundledToolchain && mkdir -p BundledToolchain
           tar xzf BundledToolchain.tar.gz -C BundledToolchain
           # 压缩包可能只有一层顶层目录：压平，保持 theos-root/ helpers/ sdks/ 在 Toolchain 根
-          mapfile -t tops < <(ls -A BundledToolchain)
-          if [ "${#tops[@]}" = "1" ] && [ -d "BundledToolchain/${tops[0]}" ]; then
-            echo "==> 压平 ${tops[0]}"
-            ( shopt -s dotglob; mv "BundledToolchain/${tops[0]}"/* BundledToolchain/ )
-            rmdir "BundledToolchain/${tops[0]}" || true
+          # macOS 的 /bin/bash 是 3.2，没有 mapfile；只用 POSIX 命令
+          COUNT=$(ls -A BundledToolchain | wc -l | tr -d ' ')
+          if [ "$COUNT" = "1" ]; then
+            TOP=$(ls -A BundledToolchain)
+            if [ -d "BundledToolchain/$TOP" ]; then
+              echo "==> 压平 $TOP"
+              cp -R "BundledToolchain/$TOP/." BundledToolchain/
+              rm -rf "BundledToolchain/$TOP"
+            fi
           fi
           tar xzf WorkbenchExtras.tar.gz -C BundledToolchain
           ls BundledToolchain | head -20
