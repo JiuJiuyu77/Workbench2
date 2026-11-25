@@ -324,6 +324,12 @@ static void WBQuickBuild(UIViewController *host) {
                                                       action:@selector(exportReport)];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    self.report = [WBHealth runChecks];
+    [self.tableView reloadData];
+}
+
 - (void)exportReport {
     NSString *text = [self.report plainText];
     UIActivityViewController *av = [[UIActivityViewController alloc]

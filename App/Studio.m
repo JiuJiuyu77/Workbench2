@@ -389,9 +389,9 @@ static NSString *OptimizationName(NSString *value){return @{@"release-speed":@"�
 @interface StudioSettings : UITableViewController
 @end
 static NSArray *StudioSettingSections(void){return @[
- @{@"title":@"插件开发",@"rows":@[@[@"theos",@"Theos 工具链",@"wrench.and.screwdriver",@"安装与查看编译工具链"],@[@"build",@"默认构建设置",@"hammer",@"SDK、最低系统与产物"],@[@"optimization",@"优化方案",@"speedometer",@""],@[@"git",@"Git 与源代码管理",@"point.3.connected.trianglepath.dotted",@"身份、服务账号与自动存档"],@[@"remote",@"局域网远程",@"network",@"浏览器工作台与本机连接"]]},
+ @{@"title":@"插件开发",@"rows":@[@[@"theos",@"Theos 工具链",@"wrench.and.screwdriver",@"安装与查看编译工具链"],@[@"build",@"默认构建设置",@"hammer",@"SDK、最低系统与产物"],@[@"optimization",@"优化方案",@"speedometer",@""],@[@"obfuscation",@"混淆强度",@"shield.lefthalf.filled",@"编译期 OLLVM 混淆"],@[@"git",@"Git 与源代码管理",@"point.3.connected.trianglepath.dotted",@"身份、服务账号与自动存档"],@[@"remote",@"局域网远程",@"network",@"浏览器工作台与本机连接"]]},
  @{@"title":@"终端与逆向",@"rows":@[@[@"terminal",@"终端",@"terminal",@"打开独立 Linux 沙盒"],@[@"tools",@"安装工具",@"shippingbox",@"按需安装、查看状态与卸载"],@[@"headers",@"IPA 头文件导出",@"doc.text.magnifyingglass",@"本机分析与 ZIP 分享"],@[@"crash",@"离线崩溃分析",@"waveform.path.ecg",@"导入 .ips 与符号档案"],@[@"health",@"环境自检",@"checkmark.shield",@"检查构建依赖与工具链是否齐全"],@[@"execenv",@"执行环境",@"gearshape.2",@"JIT / AOJIT / iSH 开关"],@[@"reverse",@"逆向工作台",@"waveform.path",@"反汇编、符号、字符串、deb 解包"]]},
- @{@"title":@"数据与工具",@"rows":@[@[@"mounts",@"挂载文件夹",@"externaldrive",@"管理外部文件夹授权"],@[@"backup",@"备份与恢复",@"archivebox",@"项目、会话、附件与软件配置"],@[@"storage",@"存储空间",@"internaldrive",@"查看占用与清理缓存"]]},
+ @{@"title":@"数据与工具",@"rows":@[@[@"storage",@"存储空间",@"internaldrive",@"查看占用与清理缓存"]]},
  @{@"title":@"外观与编辑器",@"rows":@[@[@"theme",@"界面外观",@"circle.lefthalf.filled",@""],@[@"font",@"代码字号",@"textformat.size",@""],@[@"tabs",@"始终显示底部导航栏",@"rectangle.bottomthird.inset.filled",@""]]},
  @{@"title":@"关于与支持",@"rows":@[@[@"about",@"关于 Workbench",@"info.circle",@"版本更新、使用说明与工具链"],@[@"feedback",@"反馈与建议",@"bubble.left.and.bubble.right",@""],@[@"website",@"官方网站",@"globe",@""],@[@"source",@"项目开源地址",@"chevron.left.forwardslash.chevron.right",@""],@[@"license",@"软件许可证",@"doc.text",@""]]}
  ];}
@@ -408,6 +408,7 @@ static NSArray *StudioSettingSections(void){return @[
  NSArray *r=[self rowAt:i];NSString *key=r[0];NSUserDefaults *u=NSUserDefaults.standardUserDefaults;
  UITableViewCell *c=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];c.textLabel.text=r[1];c.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];c.textLabel.numberOfLines=0;c.detailTextLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];c.detailTextLabel.textColor=UIColor.secondaryLabelColor;c.detailTextLabel.numberOfLines=0;c.detailTextLabel.text=r[3];c.imageView.image=[UIImage systemImageNamed:r[2]];c.accessoryType=UITableViewCellAccessoryDisclosureIndicator;c.accessibilityIdentifier=[@"settings." stringByAppendingString:key];
  if([key isEqual:@"optimization"])c.detailTextLabel.text=OptimizationName(GlobalOptimization());
+ if([key isEqual:@"obfuscation"])c.detailTextLabel.text=@[@"关闭",@"轻度 · indbr+cse",@"均衡 · +icall",@"强力 · 全部 pass"][MIN(MAX([u integerForKey:@"WorkbenchObfuscation"],0),3)];
  if([key isEqual:@"theme"]){NSInteger n=[u integerForKey:@"StudioTheme"];c.detailTextLabel.text=@[@"跟随系统",@"石墨深色",@"纸感浅色"][(n>=0&&n<3)?n:0];}
  if([key isEqual:@"font"])c.detailTextLabel.text=[NSString stringWithFormat:@"%ld pt",(long)([u integerForKey:@"StudioFont"]?:14)];
  if([key isEqual:@"tabs"]){UISwitch *v=[UISwitch new];v.on=[u boolForKey:@"StudioAlwaysShowTabBar"];v.accessibilityLabel=r[1];v.accessibilityIdentifier=@"studio.alwaysShowTabBar";[v addTarget:self action:@selector(tabBarPreferenceChanged:) forControlEvents:UIControlEventValueChanged];c.accessoryView=v;c.accessoryType=UITableViewCellAccessoryNone;c.selectionStyle=UITableViewCellSelectionStyleNone;}
@@ -415,6 +416,18 @@ static NSArray *StudioSettingSections(void){return @[
 }
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)i{
  [t deselectRowAtIndexPath:i animated:YES];NSString *key=[self rowAt:i][0];UIViewController *page=nil;
+ if([key isEqual:@"obfuscation"]){
+  UIAlertController *sheet=[UIAlertController alertControllerWithTitle:@"混淆强度" message:@"OLLVM 编译期混淆；强度越高，编译越慢、产物越难反编译。" preferredStyle:UIAlertControllerStyleActionSheet];
+  NSArray *names=@[@"关闭",@"轻度 · indbr+cse",@"均衡 · indbr+icall+cse",@"强力 · 全部 pass"];
+  for(NSUInteger n=0;n<names.count;n++)[sheet addAction:[UIAlertAction actionWithTitle:names[n] style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){
+   [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)n forKey:@"WorkbenchObfuscation"];
+   [t reloadData];
+  }]];
+  [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+  sheet.popoverPresentationController.sourceView=t;sheet.popoverPresentationController.sourceRect=[t rectForRowAtIndexPath:i];
+  [self presentViewController:sheet animated:YES completion:nil];
+  return;
+ }
  if([key isEqual:@"feedback"]){[UIApplication.sharedApplication openURL:[NSURL URLWithString:@"https://github.com/yangokok886/dylix/issues"] options:@{} completionHandler:nil];return;}
  NSDictionary *links=@{@"telegram":@"https://t.me/xxuegao6",@"website":@"https://dylib.cn",@"source":@"https://github.com/yangokok886/dylix"};
  if(links[key]){[UIApplication.sharedApplication openURL:[NSURL URLWithString:links[key]] options:@{} completionHandler:^(BOOL ok){if(!ok)dispatch_async(dispatch_get_main_queue(),^{Message(self,@"打开失败",@"请检查浏览器设置后重试。");});}];return;}

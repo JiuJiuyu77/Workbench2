@@ -328,6 +328,10 @@ static NSArray<NSString *> *SPFlagsForPass(NSString *pass) {
     p.path = path;
     [p reload];
 
+    // 默认构建设置里的混淆强度（设置 → 插件开发 → 混淆强度）
+    NSInteger obfuscation = [[NSUserDefaults standardUserDefaults] integerForKey:@"WorkbenchObfuscation"];
+    if (obfuscation > 0) p.options.obfuscation = (SPObfuscation)obfuscation;
+
     // Makefile 存在但没解析出产品名，说明 Makefile 内容不对
     if (p.name.length == 0) {
         if (error) *error = SPError(SPErrorCodeInvalidProject,
