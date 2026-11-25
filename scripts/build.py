@@ -58,10 +58,9 @@ shutil.copyfile(ROOT / 'LICENSE', app / 'Dylix-LICENSE.txt')
 pinned_resources = json.loads((ROOT / 'Resources/DownloadResources.json').read_text())
 pinned_sdk26 = next(row for row in pinned_resources if row['id'] == 'sdk26')
 (app / 'SDK26Resource.plist').write_bytes(plistlib.dumps({'version': '26.0', 'sha256': pinned_sdk26['sha256']}))
-resources = ['CompatibilityRules', 'ThirdPartyNotices', 'GitHelp', 'HelpArticles', 'Editor', 'GitDiff', 'RemoteWeb', 'Include', 'SampleProject', 'SampleObjectiveC', 'SampleMultiProject', 'VendorFrameworks', 'Terminal']
+resources = ['CompatibilityRules', 'ThirdPartyNotices', 'GitHelp', 'HelpArticles', 'Editor', 'GitDiff', 'RemoteWeb', 'Include', 'SampleProject', 'SampleObjectiveC', 'SampleMultiProject', 'FLEXProject', 'VendorFrameworks', 'Terminal']
 if args.simulator:
     resources.append('SampleLogosGenerated')
-    resources.append('FLEXProject')
     resources.append('SampleMultiObjectiveC')
 _missing_res = []
 for resource in resources:
@@ -144,7 +143,7 @@ info = {
     'CFBundleExecutable': 'Workbench', 'CFBundleIdentifier': args.bundle_id,
     'CFBundleName': 'Workbench', 'CFBundleDisplayName': 'Workbench',
     'CFBundleDevelopmentRegion': 'zh-Hans', 'CFBundleLocalizations': ['zh-Hans', 'en'],
-    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.2.2', 'CFBundleVersion': '287', 'WorkbenchEdition': 'opensource',
+    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.2.3', 'CFBundleVersion': '288', 'WorkbenchEdition': 'opensource',
     'CFBundleDocumentTypes': [{'CFBundleTypeName':'Workbench Files','CFBundleTypeRole':'Editor','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','public.archive','public.source-code']}],
     'CFBundleURLTypes': [{'CFBundleURLName':'Workbench Incoming','CFBundleURLSchemes':['workbench', 'workbench']}],
     'BGTaskSchedulerPermittedIdentifiers': ['com.HuQing.Workbench.ai.processing'],

@@ -1,3 +1,8 @@
+## 1.2.3 · Build288
+
+1. FLEX 保持随包：FLEX 插件与 FLEX 示例工程恢复为设备构建资源（上一版仅模拟器携带）。
+2. 其余同 1.2.2：无 AI、全内置工具链（Theos/OLLVM/逆向/Swift/16.5 SDK）、构建只走 Theos/make。
+
 ## 1.2.2 · Build287
 
 1. 删除进程内编译架构：移除 ios_system、LLVM cc1 直调、Logos/perl 进程内预处理；构建统一走内置 Work1 工具链的 Theos/make（`SPBuilder`），工具链未就绪时直接报错，不再静默回退。
