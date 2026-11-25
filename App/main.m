@@ -63,6 +63,7 @@ static NSArray<NSString *> *sourcePaths(NSString *root) {
 #import "SPBuilder.h"
 #import "SPCompat.h"
 #import "SPSession.h"
+#import "SPToolchainInstaller.h"
 
 // 工具链子进程执行：符号处理（dsymutil/strip）等仍需要跑真实二进制。
 // 全部经 SPSession 的 posix_spawn + 工具链环境，不再走进程内 ios_system。
