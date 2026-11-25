@@ -1,3 +1,10 @@
+## 1.2.9 · Build294
+
+1. 稳定性：新增 `WBCrashGuard`，挂未捕获异常与 SIGABRT/SIGBUS/SIGSEGV/SIGILL/SIGFPE/SIGTRAP 处理器，把异常名、原因、调用栈写入 `Documents/Workbench-crash.log`；启动时另写一条 launch 记录。
+2. 启动路径继续加固：断言已关闭（`-DNS_BLOCK_ASSERTIONS=1`），UIWindowScene 缺失不再 abort。
+3. 启动时核对关键资源（RemoteWeb / FLEXPlugin / iSH rootfs / clang-16 / ldid / r2 / spark-jitd），缺项写入 startup.log。
+4. 配合 `Documents/Workbench-startup.log`（1.2.8 加入）可以判断闪退发生在启动哪一步。
+
 ## 1.2.8 · Build293
 
 1. 启动闪退排查：关闭 NSAssert（`-DNS_BLOCK_ASSERTIONS=1`），把启动时对 UIWindowScene 的断言改成安全分支，避免场景未就绪直接 abort。

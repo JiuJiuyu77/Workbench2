@@ -9,6 +9,7 @@
 #import "Runtime/Background/TFAIBackground.h"
 #import "Runtime/Background/TFAINotifications.h"
 #import "RuntimeDiagnostics.h"
+#import "Runtime/CrashGuard.h"
 #import "GlassSupport.h"
 #import <UIKit/UIKit.h>
 #import <mach-o/loader.h>
@@ -642,6 +643,25 @@ extern UIViewController *TMCStorageBackup258Regression(void);
 - (void)openBuildQueueFromNotification:(NSNotification *)note{UIViewController *root=self.window.rootViewController;if(root.presentedViewController)return;if([root isKindOfClass:UITabBarController.class])root=[(UITabBarController *)root selectedViewController];if([root isKindOfClass:UINavigationController.class])[(UINavigationController *)root pushViewController:TFAIBuildQueueController() animated:YES];}
 - (BOOL)application:(UIApplication *)app openURL:(NSURL *)url options:(NSDictionary<UIApplicationOpenURLOptionsKey,id> *)options {if(self.restoringData){self.pendingRestoreURL=url;return YES;}if(url.isFileURL){TFIncomingReceive(self.window.rootViewController,url);return YES;}if(([url.scheme isEqual:@"workbench"]||[url.scheme isEqual:@"workbench"])&&[url.host isEqual:@"incoming"]){TFIncomingDrain(self.window.rootViewController);return YES;}return NO;}
 - (void)applicationDidBecomeActive:(UIApplication *)application {if(!self.restoringData)TFIncomingDrain(self.window.rootViewController);}
+// 启动时核对关键资源，缺什么写进 startup.log（不是崩溃原因也留证据）。
+static void TMCBundleAudit(void) {
+    NSString *bundle = [NSBundle.mainBundle bundlePath];
+    NSArray *required = @[@"RemoteWeb/index.html", @"FLEXPlugin/manifest.json",
+                          @"iSH/alpine-minirootfs-3.21.0-aarch64.tar.gz",
+                          @"Toolchain/theos-root/usr/bin/clang-16",
+                          @"Toolchain/theos-root/usr/bin/ldid",
+                          @"Toolchain/reverse/bin/r2",
+                          @"bin/spark-jitd"];
+    NSMutableArray *missing = [NSMutableArray array];
+    for (NSString *relative in required) {
+        if (![NSFileManager.defaultManager fileExistsAtPath:[bundle stringByAppendingPathComponent:relative]]) {
+            [missing addObject:relative];
+        }
+    }
+    TMCMarkStartup(missing.count ? [@"缺少资源: " stringByAppendingString:[missing componentsJoinedByString:@", "]]
+                                 : @"资源自检通过");
+}
+
 // 启动断点：每次里程碑写一行到 Documents/Workbench-startup.log。
 // 闪退后用户可以从「文件」里把这个日志发出来，直接定位崩在哪一步。
 static void TMCMarkStartup(NSString *stage) {
@@ -656,6 +676,7 @@ static void TMCMarkStartup(NSString *stage) {
 }
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
+    [WBCrashGuard install];
     // BGTask handlers must be registered before this method returns, before scene connection.
     TFAIBackgroundRegister();
     return YES;
@@ -684,6 +705,7 @@ static void TMCMarkStartup(NSString *stage) {
 }
 - (BOOL)finishLaunching:(NSDictionary *)options {
     TMCMarkStartup(@"finishLaunching 开始");
+    TMCBundleAudit();
     [DXRemoteService shared];
     TFAINotificationsRegister();[NSNotificationCenter.defaultCenter addObserver:self selector:@selector(openBuildQueueFromNotification:) name:@"TFAIOpenBuildQueue" object:nil];
     [NSUserDefaults.standardUserDefaults registerDefaults:@{@"StudioTheme":@1, @"StudioFont":@14, @"StudioSDKVersion":@"16.4", @"StudioDeploymentTarget":@"15.0"}];
