@@ -9,6 +9,7 @@ import subprocess
 import tarfile
 import zipfile
 import hashlib
+import concurrent.futures
 import time
 import gzip
 import json
@@ -17,6 +18,21 @@ from signing_profiles import load_profile, signing_plan
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 APP_ENTITLEMENTS = ROOT / 'entitlements.plist'
+
+
+def _resolve_entitlements():
+    """把 entitlements 里的 Bundle ID 改成构建参数，避免换包名后钥匙串/权限不匹配。"""
+    ent = plistlib.loads(APP_ENTITLEMENTS.read_bytes())
+    if isinstance(ent.get('keychain-access-groups'), list):
+        ent['keychain-access-groups'] = [args.bundle_id if 'Workbench' in str(v) else v
+                                        for v in ent['keychain-access-groups']]
+    if isinstance(ent.get('application-identifier'), str):
+        ent['application-identifier'] = ent['application-identifier'].replace('com.HuQing.Workbench', args.bundle_id)
+    out = ROOT / 'build' / platform / 'app-entitlements.plist'
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(plistlib.dumps(ent))
+    return out
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--simulator', action='store_true')
 parser.add_argument('--sdk-root', type=pathlib.Path, help='Real platform SDK used for compilation and linking (not the embedded tweak SDK)')
@@ -93,7 +109,13 @@ if _bundled_tc.is_dir() and any(_bundled_tc.iterdir()):
     _tc_dest = app / 'Toolchain'
     if _tc_dest.exists():
         shutil.rmtree(_tc_dest)
-    shutil.copytree(_bundled_tc, _tc_dest, symlinks=True)
+    _copy_started = time.time()
+    _clone = subprocess.run(['cp', '-c', '-R', str(_bundled_tc), str(_tc_dest)],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if _clone.returncode != 0:
+        shutil.rmtree(_tc_dest, ignore_errors=True)
+        shutil.copytree(_bundled_tc, _tc_dest, symlinks=True)
+    print('Toolchain copy: %.1fs' % (time.time() - _copy_started))
     (_tc_dest / 'manifest.json').write_text(json.dumps({
         'builtAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'source': 'SparkTheosRuntimeV3',
@@ -156,7 +178,7 @@ info = {
     'CFBundleExecutable': 'Workbench', 'CFBundleIdentifier': args.bundle_id,
     'CFBundleName': 'Workbench', 'CFBundleDisplayName': 'Workbench',
     'CFBundleDevelopmentRegion': 'zh-Hans', 'CFBundleLocalizations': ['zh-Hans', 'en'],
-    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.2.6', 'CFBundleVersion': '291', 'WorkbenchEdition': 'opensource',
+    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.2.7', 'CFBundleVersion': '292', 'WorkbenchEdition': 'opensource',
     'CFBundleDocumentTypes': [{'CFBundleTypeName':'Workbench Files','CFBundleTypeRole':'Editor','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','public.archive','public.source-code']}],
     'CFBundleURLTypes': [{'CFBundleURLName':'Workbench Incoming','CFBundleURLSchemes':['workbench', 'workbench']}],
     'BGTaskSchedulerPermittedIdentifiers': ['com.HuQing.Workbench.ai.processing'],
@@ -302,7 +324,7 @@ if _jit_src.is_file():
     _helper.chmod(0o755)
     _helper_flags=[]
     if not args.simulator and APP_ENTITLEMENTS.is_file():
-        _helper_flags=['--entitlements',str(APP_ENTITLEMENTS)]
+        _helper_flags=['--entitlements',str(_resolve_entitlements())]
     subprocess.run(['codesign', '--force', '--sign', args.identity, *_helper_flags, str(_helper)], check=True)
     print('JIT helper: ' + str(_helper))
 # Share Extension passes copied files through an explicitly entitled App Group.
@@ -346,7 +368,7 @@ if profile_rights:
 elif not args.simulator and APP_ENTITLEMENTS.is_file():
     # 无描述文件的 TrollStore 构建：必须带平台权限，否则装好后没有 root/persona，
     # 工具链子进程与 JIT 都会失败（Work1 同款 entitlements）。
-    main_sign_flags=['--entitlements',str(APP_ENTITLEMENTS)]
+    main_sign_flags=['--entitlements',str(_resolve_entitlements())]
 subprocess.run(['python3',str(ROOT / 'scripts/build_live_activity.py'),'--app',str(app),'--build',info['CFBundleVersion'],'--identity',args.identity,'--bundle-id',args.bundle_id + '.activity']+activity_flags+(['--simulator'] if args.simulator else []),check=True)
 def _fat_archive(path):
     """fat 归档（例如 SDK 的 libc++experimental.a）会让 ldid 报 Unknown header magic。"""
@@ -397,15 +419,16 @@ def _macho(path):
     return magic in (b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca')
 
 if (_bundled_tc.is_dir() and any(_bundled_tc.iterdir()) and not args.simulator):
+    _sign_started = time.time()
     _defat_archives(app / 'Toolchain')
-    _signed = 0
-    for _path in (app / 'Toolchain').rglob('*'):
-        if not _path.is_file() or _path.is_symlink() or not _macho(_path):
-            continue
-        subprocess.run(['codesign', '--force', '--sign', args.identity, str(_path)],
+    _machos = [p for p in (app / 'Toolchain').rglob('*')
+               if p.is_file() and not p.is_symlink() and _macho(p)]
+    def _sign_one(path):
+        subprocess.run(['codesign', '--force', '--sign', args.identity, str(path)],
                        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        _signed += 1
-    print('Bundled toolchain Mach-O signed: %d' % _signed)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(_sign_one, _machos))
+    print('Bundled toolchain Mach-O signed: %d in %.1fs' % (len(_machos), time.time() - _sign_started))
 subprocess.run(['codesign','--force','--sign',args.identity,*main_sign_flags,str(app)],check=True)
 if not args.simulator:
     package_kind = 'signed' if profile_rights else 'unsigned'
@@ -413,6 +436,7 @@ if not args.simulator:
     with zipfile.ZipFile(ipa, 'w', zipfile.ZIP_DEFLATED) as out:
         for path in app.rglob('*'):
             if path.is_file(): out.write(path, pathlib.Path('Payload') / app.name / path.relative_to(app))
+    print('IPA: %.1f MB, %d files' % (ipa.stat().st_size / 1048576.0, sum(1 for _ in app.rglob('*') if _.is_file())))
     print(ipa)
 else:
     print(app)

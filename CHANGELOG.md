@@ -1,3 +1,9 @@
+## 1.2.7 · Build292
+
+1. 代码审计：清理 `Runtime/Contracts*.h` 里指向已删除实现的声明（TFAISessions / TFAIConnections / TFAITransport / TFAICreateRuntime / TFAIProjectID 等），只保留真正有实现的入口，避免误用后运行期崩溃。
+2. 权限：entitlements 补 `get-task-allow`、`com.apple.private.cs.debugger`；构建时按 `--bundle-id` 改写 keychain-access-groups 与 application-identifier，换包名不再失配。
+3. 构建提速：工具链复制改用 APFS clone（`cp -c`，失败回退），Toolchain 内 Mach-O 签名改为 8 线程并行；日志打印各阶段耗时与 IPA 体积。
+
 ## 1.2.6 · Build291
 
 1. 修复 TrollStore 安装失败（ldid: Unknown header magic）：内置 SDK 里的 fat 静态归档（如 libc++experimental.a）会让 ldid 误判为 fat Mach-O；打包前统一 `lipo -thin arm64`，无法细分的直接剔除。

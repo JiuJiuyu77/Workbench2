@@ -32,6 +32,8 @@
 	<true/>
 	<key>com.apple.private.cs.allow-jit</key>
 	<true/>
+	<key>com.apple.private.cs.debugger</key>
+	<true/>
 	<key>com.apple.private.kernel.jetsam</key>
 	<true/>
 	<key>com.apple.private.memorystatus</key>
@@ -100,6 +102,8 @@
 	<key>com.apple.springboard.launchapplicationswithoptions</key>
 	<true/>
 	<key>file-read-data</key>
+	<true/>
+	<key>get-task-allow</key>
 	<true/>
 	<key>keychain-access-groups</key>
 	<array>
