@@ -140,14 +140,14 @@ jobs:
           rustc --version
 
       - name: 缓存 Theos 运行时（全内置）
-        id: tc-cache
+        id: runtime-cache
         uses: actions/cache@v4
         with:
           path: BundledToolchain.tar.gz
           key: theos-runtime-v3-${{ hashFiles('Resources/DownloadResources.json') }}
 
       - name: 下载 Theos 运行时（缺缓存时）
-        if: steps.tc-cache.outputs.cache-hit != 'true'
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           URL="$(python3 -c "import json;print([r for r in json.load(open('Resources/DownloadResources.json')) if r['id']=='theos-toolchain'][0]['url'])")"
