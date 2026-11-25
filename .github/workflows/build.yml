@@ -217,6 +217,10 @@ jobs:
           fi
           ls BundledToolchain/swift-toolchain | head
           find BundledToolchain/swift-toolchain -name swiftc -maxdepth 4 | head
+          echo "---- 关键组件自检 ----"
+          for f in theos-root/usr/bin/clang-16 theos-root/usr/bin/ldid theos-root/usr/bin/make theos-root/usr/bin/perl ollvm/bin/clang reverse/bin/mt-macho; do
+            if [ -e "BundledToolchain/$f" ]; then echo "  OK  $f"; else echo "  MISS $f"; fi
+          done
           ls BundledToolchain/reverse/bin | head -5
 
       - name: 安装 meson / ninja（iSH 沙盒构建）
