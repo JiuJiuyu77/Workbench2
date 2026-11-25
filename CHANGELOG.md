@@ -1,3 +1,9 @@
+## 1.2.8 · Build293
+
+1. 启动闪退排查：关闭 NSAssert（`-DNS_BLOCK_ASSERTIONS=1`），把启动时对 UIWindowScene 的断言改成安全分支，避免场景未就绪直接 abort。
+2. 启动断点日志：`Documents/Workbench-startup.log` 记录 finishLaunching/windowScene/rootViewController 等里程碑，闪退后可直接取出定位。
+3. entitlements 去掉 `com.apple.private.cs.debugger`，保留 platform-application / no-sandbox / get-task-allow / task_for_pid-allow / persona-mgmt。
+
 ## 1.2.7 · Build292
 
 1. 代码审计：清理 `Runtime/Contracts*.h` 里指向已删除实现的声明（TFAISessions / TFAIConnections / TFAITransport / TFAICreateRuntime / TFAIProjectID 等），只保留真正有实现的入口，避免误用后运行期崩溃。

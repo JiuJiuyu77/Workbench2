@@ -32,8 +32,6 @@
 	<true/>
 	<key>com.apple.private.cs.allow-jit</key>
 	<true/>
-	<key>com.apple.private.cs.debugger</key>
-	<true/>
 	<key>com.apple.private.kernel.jetsam</key>
 	<true/>
 	<key>com.apple.private.memorystatus</key>

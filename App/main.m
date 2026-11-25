@@ -642,6 +642,19 @@ extern UIViewController *TMCStorageBackup258Regression(void);
 - (void)openBuildQueueFromNotification:(NSNotification *)note{UIViewController *root=self.window.rootViewController;if(root.presentedViewController)return;if([root isKindOfClass:UITabBarController.class])root=[(UITabBarController *)root selectedViewController];if([root isKindOfClass:UINavigationController.class])[(UINavigationController *)root pushViewController:TFAIBuildQueueController() animated:YES];}
 - (BOOL)application:(UIApplication *)app openURL:(NSURL *)url options:(NSDictionary<UIApplicationOpenURLOptionsKey,id> *)options {if(self.restoringData){self.pendingRestoreURL=url;return YES;}if(url.isFileURL){TFIncomingReceive(self.window.rootViewController,url);return YES;}if(([url.scheme isEqual:@"workbench"]||[url.scheme isEqual:@"workbench"])&&[url.host isEqual:@"incoming"]){TFIncomingDrain(self.window.rootViewController);return YES;}return NO;}
 - (void)applicationDidBecomeActive:(UIApplication *)application {if(!self.restoringData)TFIncomingDrain(self.window.rootViewController);}
+// 启动断点：每次里程碑写一行到 Documents/Workbench-startup.log。
+// 闪退后用户可以从「文件」里把这个日志发出来，直接定位崩在哪一步。
+static void TMCMarkStartup(NSString *stage) {
+    NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    if (!documents.length) documents = NSTemporaryDirectory();
+    NSString *path = [documents stringByAppendingPathComponent:@"Workbench-startup.log"];
+    NSString *line = [NSString stringWithFormat:@"%.3f %@ (uid=%d)\n",
+                      NSDate.date.timeIntervalSince1970, stage, (int)getuid()];
+    NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (handle) { [handle seekToEndOfFile]; [handle writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; [handle closeFile]; }
+    else { [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:NULL]; }
+}
+
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
     // BGTask handlers must be registered before this method returns, before scene connection.
     TFAIBackgroundRegister();
@@ -654,7 +667,12 @@ extern UIViewController *TMCStorageBackup258Regression(void);
     if(![NSFileManager.defaultManager fileExistsAtPath:pending])return [self finishLaunching:options];
     self.restoringData=YES;
     // Return to UIKit immediately: large restores must not trigger the launch watchdog.
-    NSAssert(self.window.windowScene, @"A connected UIWindowScene is required before startup");
+    if (!self.window.windowScene) {
+        TMCMarkStartup(@"windowScene 缺失");
+        self.window = self.window; // 保留对象，后续 UIKit 会在可用时补上
+    } else {
+        TMCMarkStartup(@"windowScene 就绪");
+    }
     UIViewController *loading=[UIViewController new];loading.view.backgroundColor=UIColor.systemBackgroundColor;
     UILabel *label=[UILabel new];label.text=@"正在恢复 Workbench 数据，请勿关闭应用";label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];label.translatesAutoresizingMaskIntoConstraints=NO;
     UIActivityIndicatorView *spinner=[[UIActivityIndicatorView alloc]initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];spinner.translatesAutoresizingMaskIntoConstraints=NO;[spinner startAnimating];
@@ -665,10 +683,16 @@ extern UIViewController *TMCStorageBackup258Regression(void);
     return YES;
 }
 - (BOOL)finishLaunching:(NSDictionary *)options {
+    TMCMarkStartup(@"finishLaunching 开始");
     [DXRemoteService shared];
     TFAINotificationsRegister();[NSNotificationCenter.defaultCenter addObserver:self selector:@selector(openBuildQueueFromNotification:) name:@"TFAIOpenBuildQueue" object:nil];
     [NSUserDefaults.standardUserDefaults registerDefaults:@{@"StudioTheme":@1, @"StudioFont":@14, @"StudioSDKVersion":@"16.4", @"StudioDeploymentTarget":@"15.0"}];
-    NSAssert(self.window.windowScene, @"A connected UIWindowScene is required before startup");
+    if (!self.window.windowScene) {
+        TMCMarkStartup(@"windowScene 缺失");
+        self.window = self.window; // 保留对象，后续 UIKit 会在可用时补上
+    } else {
+        TMCMarkStartup(@"windowScene 就绪");
+    }
     self.window.tintColor=[UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *trait){return trait.userInterfaceStyle==UIUserInterfaceStyleDark?[UIColor colorWithRed:.93 green:.77 blue:.52 alpha:1]:[UIColor colorWithRed:.45 green:.30 blue:.10 alpha:1];}];
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{TMCPrepareDocumentPresentation(documents);});
@@ -676,7 +700,9 @@ extern UIViewController *TMCStorageBackup258Regression(void);
     // Only unreported builds from earlier processes are marked interrupted.
     for(NSString *entry in [NSFileManager.defaultManager contentsOfDirectoryAtPath:documents error:nil])if([entry hasPrefix:@"Build-"]){NSString *path=[documents stringByAppendingPathComponent:entry],*marker=[path stringByAppendingPathComponent:@".build-in-progress.json"],*report=[path stringByAppendingPathComponent:@"report.json"];if([NSFileManager.defaultManager fileExistsAtPath:marker]&&![NSFileManager.defaultManager fileExistsAtPath:report]){NSDictionary *interrupted=@{@"success":@NO,@"commands":@[],@"interrupted":@YES,@"packageError":@"上次构建被系统或应用退出中断，请重新构建。原始日志已保留。"};[[NSJSONSerialization dataWithJSONObject:interrupted options:0 error:nil] writeToFile:report atomically:YES];}}
     BOOL testing = [NSProcessInfo.processInfo.arguments containsObject:@"--self-test"] || [NSProcessInfo.processInfo.arguments containsObject:@"--self-test-project"];
+    TMCMarkStartup(@"准备 rootViewController");
     self.window.rootViewController = testing ? [[TMCNavigationController alloc] initWithRootViewController:[CompilerController new]] : TMCStudioRoot();
+    TMCMarkStartup(@"rootViewController 已设置");
 #if TARGET_OS_SIMULATOR
 #if WORKBENCH_HAS_INTEGRATION165
     extern UIViewController *DXIntegration165Controller(void);
