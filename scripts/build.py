@@ -16,6 +16,7 @@ from build_sdk import select_sdk
 from signing_profiles import load_profile, signing_plan
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+APP_ENTITLEMENTS = ROOT / 'entitlements.plist'
 parser = argparse.ArgumentParser()
 parser.add_argument('--simulator', action='store_true')
 parser.add_argument('--sdk-root', type=pathlib.Path, help='Real platform SDK used for compilation and linking (not the embedded tweak SDK)')
@@ -155,7 +156,7 @@ info = {
     'CFBundleExecutable': 'Workbench', 'CFBundleIdentifier': args.bundle_id,
     'CFBundleName': 'Workbench', 'CFBundleDisplayName': 'Workbench',
     'CFBundleDevelopmentRegion': 'zh-Hans', 'CFBundleLocalizations': ['zh-Hans', 'en'],
-    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.2.5', 'CFBundleVersion': '290', 'WorkbenchEdition': 'opensource',
+    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.2.6', 'CFBundleVersion': '291', 'WorkbenchEdition': 'opensource',
     'CFBundleDocumentTypes': [{'CFBundleTypeName':'Workbench Files','CFBundleTypeRole':'Editor','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','public.archive','public.source-code']}],
     'CFBundleURLTypes': [{'CFBundleURLName':'Workbench Incoming','CFBundleURLSchemes':['workbench', 'workbench']}],
     'BGTaskSchedulerPermittedIdentifiers': ['com.HuQing.Workbench.ai.processing'],
@@ -299,7 +300,10 @@ if _jit_src.is_file():
                     '-mios-simulator-version-min=15.0' if args.simulator else '-miphoneos-version-min=15.0',
                     '-O2', '-Wall', '-Wno-unused-result', str(_jit_src), '-o', str(_helper)], check=True)
     _helper.chmod(0o755)
-    subprocess.run(['codesign', '--force', '--sign', args.identity, str(_helper)], check=True)
+    _helper_flags=[]
+    if not args.simulator and APP_ENTITLEMENTS.is_file():
+        _helper_flags=['--entitlements',str(APP_ENTITLEMENTS)]
+    subprocess.run(['codesign', '--force', '--sign', args.identity, *_helper_flags, str(_helper)], check=True)
     print('JIT helper: ' + str(_helper))
 # Share Extension passes copied files through an explicitly entitled App Group.
 # Re-signing must preserve matching group rights in both provisioning profiles.
@@ -339,7 +343,51 @@ if profile_rights:
     activity_rights.write_bytes(plistlib.dumps(profile_rights[2]))
     main_sign_flags=['--entitlements',str(main_rights)]
     activity_flags=['--profile',str(args.activity_profile),'--entitlements',str(activity_rights)]
+elif not args.simulator and APP_ENTITLEMENTS.is_file():
+    # 无描述文件的 TrollStore 构建：必须带平台权限，否则装好后没有 root/persona，
+    # 工具链子进程与 JIT 都会失败（Work1 同款 entitlements）。
+    main_sign_flags=['--entitlements',str(APP_ENTITLEMENTS)]
 subprocess.run(['python3',str(ROOT / 'scripts/build_live_activity.py'),'--app',str(app),'--build',info['CFBundleVersion'],'--identity',args.identity,'--bundle-id',args.bundle_id + '.activity']+activity_flags+(['--simulator'] if args.simulator else []),check=True)
+def _fat_archive(path):
+    """fat 归档（例如 SDK 的 libc++experimental.a）会让 ldid 报 Unknown header magic。"""
+    try:
+        with open(path, 'rb') as handle:
+            head = handle.read(8)
+            if len(head) < 8:
+                return False
+            magic = int.from_bytes(head[:4], 'big')
+            if magic not in (0xCAFEBABE, 0xBEBAFECA):
+                return False
+            count = int.from_bytes(head[4:8], 'big')
+            if not 0 < count <= 64:
+                return False
+            offset = int.from_bytes(head[16:20], 'big')
+            handle.seek(offset)
+            slice_magic = handle.read(4)
+    except OSError:
+        return False
+    return slice_magic not in (b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe',
+                               b'\xfe\xed\xfa\xcf', b'\xfe\xed\xfa\xce')
+
+
+def _defat_archives(base):
+    thinned = dropped = 0
+    for path in base.rglob('*'):
+        if not path.is_file() or path.is_symlink() or not _fat_archive(path):
+            continue
+        temp = path.with_name(path.name + '.thin')
+        result = subprocess.run(['xcrun', 'lipo', '-thin', 'arm64', str(path), '-output', str(temp)],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if result.returncode == 0 and temp.exists():
+            os.replace(temp, path)
+            thinned += 1
+        else:
+            temp.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
+            dropped += 1
+    print('fat archives: thinned=%d dropped=%d' % (thinned, dropped))
+
+
 def _macho(path):
     try:
         with open(path, 'rb') as handle:
@@ -349,6 +397,7 @@ def _macho(path):
     return magic in (b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca')
 
 if (_bundled_tc.is_dir() and any(_bundled_tc.iterdir()) and not args.simulator):
+    _defat_archives(app / 'Toolchain')
     _signed = 0
     for _path in (app / 'Toolchain').rglob('*'):
         if not _path.is_file() or _path.is_symlink() or not _macho(_path):

@@ -1,3 +1,9 @@
+## 1.2.6 · Build291
+
+1. 修复 TrollStore 安装失败（ldid: Unknown header magic）：内置 SDK 里的 fat 静态归档（如 libc++experimental.a）会让 ldid 误判为 fat Mach-O；打包前统一 `lipo -thin arm64`，无法细分的直接剔除。
+2. 对齐 Work1 权限：无描述文件构建时，主程序与 `bin/spark-jitd` 使用 Work1 同款 entitlements（platform-application / no-sandbox / persona-mgmt / get-task-allow / task_for_pid-allow 等），TrollStore 安装后具备 root persona 与 JIT 授权能力。
+3. 体积：1.2.5 的裁剪继续生效（Swift SIL 工具、Theos 文档/测试、重复 clang++），ipa 约 690MB。
+
 ## 1.2.5 · Build290
 
 1. 体积优化（不改变内置内容）：裁剪 Theos 包里的 docs/tests/examples/.git，删除 Swift 工具链中构建用不到的 SIL 调试工具（sil-opt / sil-nm / sil-llvm-gen / sil-func-extractor / sil-passpipeline-dumper，单个约 100–155MB）、sourcekitd、lldb，并把 OLLVM 的 clang++ 改成指向 clang 的符号链接。
