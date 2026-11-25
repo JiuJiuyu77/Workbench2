@@ -575,7 +575,7 @@ extern UIViewController *TMCStorageBackup258Regression(void);
             ok = [self tryTheosBuildProject:projectDirectory buildDir:build];
         } @catch (NSException *exception) {
             ok = NO;
-            [TMCMarkStartup([NSString stringWithFormat:@"构建异常: %@", exception.reason ?: @"unknown"]) copy];
+            TMCMarkStartup([NSString stringWithFormat:@"构建异常: %@", exception.reason ?: @"unknown"]);
             NSMutableString *detail = [NSMutableString stringWithFormat:@"构建异常：%@\n", exception.reason ?: @"未知异常"];
             for (NSString *frame in exception.callStackSymbols) [detail appendFormat:@"%@\n", frame];
             dispatch_async(dispatch_get_main_queue(), ^{ self.console.text = detail; });
