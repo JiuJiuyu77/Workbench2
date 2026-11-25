@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
@@ -84,7 +85,7 @@ static int jit_check(char *out, size_t cap) {
     invalidate_icache(p, sizeof(uint32_t));
     if (unlock) unlock(1);
 
-    volatile int (*fn)(void) = (int (*)(void))p;
+    int (*fn)(void) = (int (*)(void))p;
     (void)fn();
     munmap(p, size);
     snprintf(out, cap, "ok 0x%llx", (unsigned long long)(uintptr_t)p);
