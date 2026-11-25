@@ -196,7 +196,7 @@ static NSArray *SourceFiles(NSString *root, NSError **error) {
         NSDictionary *attributes=[enumerator fileAttributes];
         if([attributes[NSFileType] isEqual:NSFileTypeDirectory]){if(SkipDirectory(relative.lastPathComponent)||relative.pathComponents.count>32)[enumerator skipDescendants];continue;}
         if(![attributes[NSFileType] isEqual:NSFileTypeRegular])continue;
-        if([@[@"x",@"xm",@"m",@"mm",@"c",@"cpp"] containsObject:relative.pathExtension.lowercaseString])[sources addObject:relative];
+        if([@[@"x",@"xm",@"m",@"mm",@"c",@"cpp",@"swift"] containsObject:relative.pathExtension.lowercaseString])[sources addObject:relative];
     }
     return [sources sortedArrayUsingSelector:@selector(localizedStandardCompare:)];
 }
@@ -278,7 +278,7 @@ NSDictionary *TMCPrepareImportedProject(NSString *root, NSString *fallbackName, 
     for(id source in sources){
         NSString *relative=[source isKindOfClass:NSString.class]?CleanRelativePath(source):nil;
         NSDictionary *attributes=relative?[fm attributesOfItemAtPath:[root stringByAppendingPathComponent:relative] error:nil]:nil;
-        if(!relative.length||![attributes[NSFileType] isEqual:NSFileTypeRegular]||![@[@"x",@"xm",@"m",@"mm",@"c",@"cpp"] containsObject:relative.pathExtension.lowercaseString]){if(error)*error=ImportError(TMCArchiveProjectInvalid,[NSString stringWithFormat:@"工程源码路径无效：%@",source]);return nil;}
+        if(!relative.length||![attributes[NSFileType] isEqual:NSFileTypeRegular]||![@[@"x",@"xm",@"m",@"mm",@"c",@"cpp",@"swift"] containsObject:relative.pathExtension.lowercaseString]){if(error)*error=ImportError(TMCArchiveProjectInvalid,[NSString stringWithFormat:@"工程源码路径无效：%@",source]);return nil;}
     }
     BOOL needsSourceList=existing&&!config[@"sources"];
     if(needsSourceList)config[@"sources"]=sources;

@@ -11,7 +11,7 @@
 #import "GlassSupport.h"
 #import "StorageSpace.h"
 #import "WBRemoteController.h"
-#import "Runtime/Sandbox/TFAISHHub.h"
+#import "Runtime/Sandbox/TFAIISHHub.h"
 
 @interface WBWorkbenchController : UITableViewController
 @end

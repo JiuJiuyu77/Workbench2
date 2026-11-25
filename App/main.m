@@ -55,7 +55,7 @@ static NSArray<NSString *> *sourcePaths(NSString *root) {
     NSArray *names = [config[@"sources"] isKindOfClass:NSArray.class] ? config[@"sources"] : [[NSFileManager.defaultManager contentsOfDirectoryAtPath:root error:nil] sortedArrayUsingSelector:@selector(compare:)];
     for (NSString *name in names) {
         NSString *path = projectPath(root, name);
-        if (!path || ![@[@"x", @"xm", @"m", @"mm", @"c", @"cpp"] containsObject:path.pathExtension.lowercaseString]) continue;
+        if (!path || ![@[@"x", @"xm", @"m", @"mm", @"c", @"cpp", @"swift"] containsObject:path.pathExtension.lowercaseString]) continue;
         BOOL directory = NO;
         if ([NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&directory] && !directory) [paths addObject:path];
     }
@@ -483,7 +483,7 @@ extern UIViewController *TMCStorageBackup258Regression(void);
         NSMutableArray *sources = [NSMutableArray array];
         NSMutableArray *plists = [NSMutableArray array];
         for (NSString *file in files) {
-            if ([@[@"x", @"xm", @"m", @"mm", @"c", @"cpp"] containsObject:file.pathExtension.lowercaseString]) [sources addObject:file];
+            if ([@[@"x", @"xm", @"m", @"mm", @"c", @"cpp", @"swift"] containsObject:file.pathExtension.lowercaseString]) [sources addObject:file];
             if ([file.pathExtension.lowercaseString isEqualToString:@"plist"]) [plists addObject:file];
         }
         NSArray *configuredSources = sourcePaths(dest);

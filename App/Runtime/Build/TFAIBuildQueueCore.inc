@@ -1,3 +1,7 @@
+// Live Activity 已移除；构建进度只写入后台任务记录。
+static inline void TFAILiveUpdate(NSString *stage, NSUInteger percent, NSUInteger total) { (void)stage; (void)percent; (void)total; }
+static inline void TFAILiveEnd(BOOL success) { (void)success; }
+
 static NSString *QueuePath(void){NSString *dir=[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,NSUserDomainMask,YES).firstObject stringByAppendingPathComponent:@"DylixAgent"];[NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];return [dir stringByAppendingPathComponent:@"build-queue.json"];}
 @interface TFAIBuildQueue ()
 @property NSMutableArray *jobs;
