@@ -224,8 +224,20 @@ jobs:
           else
             cp -R /tmp/swiftdeb/root/. BundledToolchain/swift-toolchain/
           fi
-          ls BundledToolchain/swift-toolchain | head
-          find BundledToolchain/swift-toolchain -name swiftc -maxdepth 4 | head
+          # deb 的实际前缀不一定是 /usr（可能是 /opt/swift-*），按 swiftc 实际位置建 usr 链接，
+          # 安装器固定按 swift-toolchain/usr/bin 找 swiftc。
+          SWIFTC=$(find BundledToolchain/swift-toolchain -name swiftc -type f | head -1)
+          if [ -n "$SWIFTC" ]; then
+            SWIFT_USR=$(dirname "$(dirname "$SWIFTC")")
+            echo "swiftc: $SWIFTC (prefix $SWIFT_USR)"
+            if [ ! -d BundledToolchain/swift-toolchain/usr ]; then
+              ln -s "${SWIFT_USR#BundledToolchain/swift-toolchain/}" BundledToolchain/swift-toolchain/usr
+            fi
+            ls BundledToolchain/swift-toolchain/usr/bin | head -5
+          else
+            echo "::warning::Swift 工具链里没找到 swiftc"
+            find BundledToolchain/swift-toolchain -maxdepth 3 | head -20
+          fi
           echo "---- 关键组件自检 ----"
           for f in theos-root/usr/bin/clang-16 theos-root/usr/bin/ldid theos-root/usr/bin/make theos-root/usr/bin/perl ollvm/bin/clang reverse/bin/mt-macho; do
             if [ -e "BundledToolchain/$f" ]; then echo "  OK  $f"; else echo "  MISS $f"; fi
