@@ -1,3 +1,12 @@
+## 1.2.1 · Build286
+
+1. 彻底移除 AI 对话层：`App/AI`（189 文件）退出编译与仓库，会话、模型服务商、人设、用量、Agent、工具注册与聊天界面全部删除。
+2. 非对话能力迁到 `App/Runtime`：iSH 沙盒运行时（31）、备份引擎（3）、附件与目录授权（8）、二进制/类导出（6）、构建队列与缓存（7）、资源下载与更新（4）、后台任务与活动（6）。
+3. 新增非 AI 工作区工具层 `App/Runtime/Toolbox.m`：远程工作台的 list/search/read/build/artifacts/git_* 由本地文件与 libgit2 直接执行，不再经过 AI 工具链。
+4. 远程工作台去掉 `ai_*` 动作与会话表依赖；AI 入口（会话、设置、附件浏览器）从设置与共享面板移除。
+5. 构建修复：LLVM 23 的 lld 拆包探测、CI 安装 meson/ninja、iSH 降级路径不再崩溃、控制器类与工厂函数同名冲突、跨 TU static、`workbench_listener_hook` 与 `WORKBENCH_EMBEDDED_SANDBOX` 宏对齐。
+6. 新增 `spark-jitd`（独立 JIT 授权 helper）与 TrollStore `apple-magnifier://enable-jit` 入口；新增 GitHub Actions 云端构建（`WBCloudBuild`）。
+
 ## 1.2.0 · Build285
 
 1. 基于 dylix 1.1.4 重构为 Workbench 2，移除 AI 对话产品层（聊天界面、服务商接入、人设、流式传输、用量统计共 69 个文件），保留本机构建、终端沙盒、Git、文件管理、备份与二进制分析能力。
