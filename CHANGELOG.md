@@ -4,7 +4,10 @@
 2. 数据容器：entitlements 去掉 no-container / container-required / MobileContainerManager，App 恢复独立数据容器，不再把 Documents 指向共享的 /var/mobile。
 3. 存储清理：移除「其他用户文件」分类；清理入口增加容器守卫，路径不在 Containers/Data 或 AppGroup 下时直接停用并提示。
 4. SDK 识别：`SDKResources` 改为读取内置 `Toolchain/sdks/iPhoneOS*.sdk`（16.4 兼容映射到 16.5），不再依赖已删除的 SDK.zip；安装工具页只保留内置 16.5 说明，去掉多余的 26.x 下载行。
-5. 版本 1.3.0（295）。
+5. 环境自检重做：分「SDK / 工具链（makefiles、clang-16、ld64、ldid、make、perl、logos、OLLVM、r2、mt-macho、swiftc）/ 运行时（rootfs、helpers/bash、spark-jitd、iSH 沙盒）/ 运行环境（数据容器、root persona、JIT）/ 磁盘 / 目录可写」六组检查。
+6. 新增「运行快速构建测试」：内置生成最小 Theos 样例（Makefile/control/Tweak.xm），调用 Theos 编译并显示耗时、日志尾部与日志路径。
+7. 构建入口加异常捕获：构建异常写入启动日志并在控制台显示调用栈，不再整机闪退。
+8. 版本 1.3.0（295）。
 
 ## 1.2.9 · Build294
 

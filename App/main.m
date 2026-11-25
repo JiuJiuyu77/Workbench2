@@ -563,13 +563,23 @@ extern UIViewController *TMCStorageBackup258Regression(void);
     NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
     self.lastBuild = [documents stringByAppendingPathComponent:[@"Build-" stringByAppendingString:NSUUID.UUID.UUIDString]];
     NSString *build = self.lastBuild;
+    if (!self.console) [self loadViewIfNeeded];
     self.console.text = @"使用内置工具链（Theos / make）构建…\n";
     NSTimeInterval startedAt = NSDate.date.timeIntervalSince1970;
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         typeof(self) self = weakSelf; if (!self) return;
         [[NSFileManager defaultManager] createDirectoryAtPath:build withIntermediateDirectories:YES attributes:nil error:NULL];
-        BOOL ok = [self tryTheosBuildProject:projectDirectory buildDir:build];
+        BOOL ok = NO;
+        @try {
+            ok = [self tryTheosBuildProject:projectDirectory buildDir:build];
+        } @catch (NSException *exception) {
+            ok = NO;
+            [TMCMarkStartup([NSString stringWithFormat:@"构建异常: %@", exception.reason ?: @"unknown"]) copy];
+            NSMutableString *detail = [NSMutableString stringWithFormat:@"构建异常：%@\n", exception.reason ?: @"未知异常"];
+            for (NSString *frame in exception.callStackSymbols) [detail appendFormat:@"%@\n", frame];
+            dispatch_async(dispatch_get_main_queue(), ^{ self.console.text = detail; });
+        }
         NSMutableArray *artifacts = [NSMutableArray array];
         if (ok) {
             NSString *packages = [projectDirectory stringByAppendingPathComponent:@"packages"];
