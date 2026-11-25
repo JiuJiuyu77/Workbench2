@@ -5,6 +5,13 @@
 static NSError *SE(NSString *text){return [NSError errorWithDomain:@"Workbench.Storage" code:1 userInfo:@{NSLocalizedDescriptionKey:text}];}
 static NSString *Join(NSString *base,NSString *name){return [base stringByAppendingPathComponent:name];}
 static BOOL RealDirectory(NSString *path){struct stat st;return lstat(path.fileSystemRepresentation,&st)==0&&S_ISDIR(st.st_mode);}
+static BOOL TMCPathInsideAppContainer(NSString *path) {
+    if (![path isKindOfClass:NSString.class] || !path.length) return NO;
+    NSString *resolved = path.stringByStandardizingPath;
+    return [resolved containsString:@"/Containers/Data/Application/"] ||
+           [resolved containsString:@"/Containers/Shared/AppGroup/"];
+}
+
 static NSString *Category(NSString *relative,BOOL documents){
  NSArray *parts=relative.pathComponents;NSString *top=parts.firstObject?:@"";
  if(documents){
@@ -28,7 +35,6 @@ static NSString *Category(NSString *relative,BOOL documents){
 }
 static NSArray *Definitions(void){return @[
  @{@"id":@"published",@"name":@"已导出构建产物",@"level":@"独立保存",@"impact":@"单独保存的 deb、dylib 和构建记录；不会随自动构建缓存清理删除。",@"clear":@YES,@"symbol":@"shippingbox.fill"},
- @{@"id":@"userfiles",@"name":@"其他用户文件",@"level":@"请先确认",@"impact":@"Documents 中未归入项目的原文件、导出文件及自建目录。可逐项查看并选择；删除前请先保存需要的内容。",@"clear":@YES,@"symbol":@"doc.on.doc"},
  @{@"id":@"received",@"name":@"接收文件与解包副本",@"level":@"重要输入",@"impact":@"包含接收原文件、目录附件解包及终端导出。删除后相关读取入口失效，请先保存所需文件。",@"clear":@YES,@"symbol":@"tray.full"},
  @{@"id":@"localbackups",@"name":@"本机备份文件",@"level":@"请先导出",@"impact":@"删除已创建的本机备份，无法再从这些文件恢复。",@"clear":@YES,@"symbol":@"archivebox"},
  @{@"id":@"linuxSnapshots",@"name":@"Linux 环境快照",@"level":@"恢复副本",@"impact":@"仅删除环境恢复快照，不删除当前 Linux 文件系统；存在待执行维护时暂不允许清理。",@"clear":@YES,@"symbol":@"externaldrive.badge.timemachine"},
@@ -216,6 +222,11 @@ static UIViewController *StorageBrowser(NSDictionary *,NSString *,NSString *,NSM
  UIAlertController *alert=[UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"清理约 %@？",Bytes(self.selectedBytes)] message:[[lines componentsJoinedByString:@"\n\n"] stringByAppendingString:@"\n\n这些内容将直接删除，请确认已保存需要的文件。"] preferredStyle:UIAlertControllerStyleAlert];[alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[alert addAction:[UIAlertAction actionWithTitle:@"确认清理" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *a){[self clean];}]];[self presentViewController:alert animated:YES completion:nil];
 }
 - (void)clean{
+ NSString *documents = self.snapshot[@"documents"] ?: NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+ if (!TMCPathInsideAppContainer(documents)) {
+  [self message:@"当前没有独立数据容器" text:@"应用以平台权限运行，Documents 指向共享目录。为避免删除其它 App 的文件，存储清理已停用。请安装带容器权限的版本。" ];
+  return;
+ }
  if(TFAIClassDumpIsActive()||[TMCGitLease hasActiveBuilds]){[self message:@"有任务正在处理" text:@"请等待构建或头文件导出完成后再清理。"];return;}
  self.working=YES;self.cleaning=YES;self.cleanProgress=[NSProgress progressWithTotalUnitCount:1];[self updateButton];UIActivityIndicatorView *spinner=[[UIActivityIndicatorView alloc]initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];[spinner startAnimating];self.navigationItem.titleView=spinner;NSDictionary *snapshot=self.snapshot;NSSet *selected=[self.selected copy];NSMutableArray *items=[self.selectedItems.allValues mutableCopy];for(NSDictionary *root in snapshot[@"entries"])if([selected containsObject:root[@"category"]])[items addObject:root];
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{@autoreleasepool{

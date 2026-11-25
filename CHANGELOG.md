@@ -1,3 +1,11 @@
+## 1.3.0 · Build295
+
+1. 修复设置页闪退：工厂返回的 TMCNavigationController 直接塞进现有导航栈会抛 “Pushing a navigation controller into a navigation stack is not supported”，现在先取顶层控制器再 push。
+2. 数据容器：entitlements 去掉 no-container / container-required / MobileContainerManager，App 恢复独立数据容器，不再把 Documents 指向共享的 /var/mobile。
+3. 存储清理：移除「其他用户文件」分类；清理入口增加容器守卫，路径不在 Containers/Data 或 AppGroup 下时直接停用并提示。
+4. SDK 识别：`SDKResources` 改为读取内置 `Toolchain/sdks/iPhoneOS*.sdk`（16.4 兼容映射到 16.5），不再依赖已删除的 SDK.zip；安装工具页只保留内置 16.5 说明，去掉多余的 26.x 下载行。
+5. 版本 1.3.0（295）。
+
 ## 1.2.9 · Build294
 
 1. 稳定性：新增 `WBCrashGuard`，挂未捕获异常与 SIGABRT/SIGBUS/SIGSEGV/SIGILL/SIGFPE/SIGTRAP 处理器，把异常名、原因、调用栈写入 `Documents/Workbench-crash.log`；启动时另写一条 launch 记录。

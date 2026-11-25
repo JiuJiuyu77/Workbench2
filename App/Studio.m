@@ -263,7 +263,7 @@ static void RenderBuildLog(UITextView *view, NSString *value, BOOL tail) {
  TMCGitLease *lease __attribute__((objc_precise_lifetime))=[TMCGitLease tryWrite];if(!lease){Message(self,@"Git 正在处理",@"请稍后修改构建设置。");return NO;}
  NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;NSMutableDictionary *config=[(self.root?Config(self.root):@{}) mutableCopy];if(value)config[key]=value;else[config removeObjectForKey:key];
  // Validate prospective global defaults without mutating preferences on failure.
- NSMutableDictionary *candidate=[config mutableCopy];if(!self.root){for(NSString *other in @[@"sdkVersion",@"deploymentTarget"]){if([other isEqual:key])continue;NSString *defaultKey=[other isEqual:@"sdkVersion"]?@"StudioSDKVersion":@"StudioDeploymentTarget";candidate[other]=[defaults objectForKey:defaultKey]?:([other isEqual:@"sdkVersion"]?@"16.4":@"15.0");}}
+ NSMutableDictionary *candidate=[config mutableCopy];if(!self.root){for(NSString *other in @[@"sdkVersion",@"deploymentTarget"]){if([other isEqual:key])continue;NSString *defaultKey=[other isEqual:@"sdkVersion"]?@"StudioSDKVersion":@"StudioDeploymentTarget";candidate[other]=[defaults objectForKey:defaultKey]?:([other isEqual:@"sdkVersion"]?@"16.5":@"15.0");}}
  NSError *error=nil;if(!TMCSDKBuildSettings(candidate,defaults,&error)){Message(self,@"构建配置有误",error.localizedDescription);return NO;}
  if([key isEqual:@"cxxStandard"]&&value&&![@[@"c++98",@"gnu++98",@"c++11",@"gnu++11",@"c++14",@"gnu++14",@"c++17",@"gnu++17",@"c++20",@"gnu++20"] containsObject:value]){Message(self,@"C++ 标准无效",@"请选择列表中的标准。");return NO;}
  if(self.root){if(!JSONWrite(config,[self.root stringByAppendingPathComponent:@"MobileCompiler.json"],&error)){Message(self,@"保存失败",error.localizedDescription);return NO;}MarkSaved(self.root);}else [defaults setObject:value forKey:[key isEqual:@"sdkVersion"]?@"StudioSDKVersion":[key isEqual:@"deploymentTarget"]?@"StudioDeploymentTarget":@"StudioCxxStandard"];
@@ -436,7 +436,14 @@ static NSArray *StudioSettingSections(void){return @[
  else if([key isEqual:@"storage"])page=TMCStorageController();
  else if([key isEqual:@"about"])page=[[StudioAbout alloc]initWithStyle:UITableViewStyleInsetGrouped];
  else if([key isEqual:@"optimization"]){StudioOptimizationPicker *picker=[[StudioOptimizationPicker alloc]initWithStyle:UITableViewStyleInsetGrouped];picker.selected=GlobalOptimization();picker.symbolPolicy=[NSUserDefaults.standardUserDefaults stringForKey:@"StudioSymbolPolicy"]?:@"auto";picker.symbolCompletion=^(NSString *value){[NSUserDefaults.standardUserDefaults setObject:value forKey:@"StudioSymbolPolicy"];return YES;};__weak typeof(self) weak=self;picker.completion=^(NSString *value){[NSUserDefaults.standardUserDefaults setObject:value forKey:@"StudioOptimization"];[weak.tableView reloadData];};page=picker;}
- if(page){[self.navigationController pushViewController:page animated:YES];return;}
+ if(page){
+  // 这些工厂返回的是自带的 TMCNavigationController；直接塞进现有导航栈会抛
+  // “Pushing a navigation controller into a navigation stack is not supported”。
+  if([page isKindOfClass:UINavigationController.class]){
+   UINavigationController *nav=(UINavigationController *)page;
+   page=nav.viewControllers.firstObject ?: page;
+  }
+  [self.navigationController pushViewController:page animated:YES];return;}
  NSArray *choices=nil;NSString *preference=nil;if([key isEqual:@"theme"]){choices=@[@"跟随系统",@"石墨深色",@"纸感浅色"];preference=@"StudioTheme";}else if([key isEqual:@"font"]){choices=@[@"12",@"14",@"16",@"18",@"20"];preference=@"StudioFont";}if(!choices)return;
  UIAlertController *a=[UIAlertController alertControllerWithTitle:@"选择偏好" message:nil preferredStyle:UIAlertControllerStyleActionSheet];for(NSUInteger n=0;n<choices.count;n++){NSString *value=choices[n];[a addAction:[UIAlertAction actionWithTitle:value style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){[NSUserDefaults.standardUserDefaults setInteger:[preference isEqual:@"StudioTheme"]?n:value.integerValue forKey:preference];ApplyTheme(self);[self.tableView reloadData];}]];}[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];a.popoverPresentationController.sourceView=[t cellForRowAtIndexPath:i];a.popoverPresentationController.sourceRect=[t cellForRowAtIndexPath:i].bounds;[self presentViewController:a animated:YES completion:nil];
 }
@@ -1603,7 +1610,7 @@ UIViewController *TMCStudioSDKRegression(void){
  StudioBuildPreferences *global=[[StudioBuildPreferences alloc] initWithStyle:UITableViewStyleInsetGrouped];
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,.5*NSEC_PER_SEC),dispatch_get_main_queue(),^{
  NSUserDefaults *u=NSUserDefaults.standardUserDefaults;id oldSDK=[u objectForKey:@"StudioSDKVersion"],oldMin=[u objectForKey:@"StudioDeploymentTarget"];
- [u setObject:@"16.4" forKey:@"StudioSDKVersion"];[u setObject:@"15.0" forKey:@"StudioDeploymentTarget"];
+ [u setObject:@"16.5" forKey:@"StudioSDKVersion"];[u setObject:@"15.0" forKey:@"StudioDeploymentTarget"];
  NSMutableDictionary *r=[NSMutableDictionary new];
  r[@"globalSDKSave"]=@([global saveSDKValue:@"26.0" key:@"sdkVersion"]);
  r[@"globalMinimumSave"]=@([global saveSDKValue:@"18.6" key:@"deploymentTarget"]);

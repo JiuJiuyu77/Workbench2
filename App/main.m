@@ -708,7 +708,7 @@ static void TMCMarkStartup(NSString *stage) {
     TMCBundleAudit();
     [DXRemoteService shared];
     TFAINotificationsRegister();[NSNotificationCenter.defaultCenter addObserver:self selector:@selector(openBuildQueueFromNotification:) name:@"TFAIOpenBuildQueue" object:nil];
-    [NSUserDefaults.standardUserDefaults registerDefaults:@{@"StudioTheme":@1, @"StudioFont":@14, @"StudioSDKVersion":@"16.4", @"StudioDeploymentTarget":@"15.0"}];
+    [NSUserDefaults.standardUserDefaults registerDefaults:@{@"StudioTheme":@1, @"StudioFont":@14, @"StudioSDKVersion":@"16.5", @"StudioDeploymentTarget":@"15.0"}];
     if (!self.window.windowScene) {
         TMCMarkStartup(@"windowScene 缺失");
         self.window = self.window; // 保留对象，后续 UIKit 会在可用时补上
