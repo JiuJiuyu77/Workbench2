@@ -1,3 +1,4 @@
+#import "SPCompat.h"
 #import "DocumentPresentation.h"
 #import "Runtime/Resources/DXAppUpdate.h"
 #import "Runtime/Backup/DXBackup.h"
