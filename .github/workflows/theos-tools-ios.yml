@@ -48,10 +48,14 @@ jobs:
           cd ld64src
           ls
           # ld64 只用 Xcode 工程构建
-          xcodebuild -project ld64.xcodeproj -target ld64 \
-            -configuration Release -sdk iphoneos ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
-            IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            CONFIGURATION_BUILD_DIR="$PWD/out" build 2>&1 | tail -30 || true
+          xcodebuild -project ld64.xcodeproj -list 2>&1 | head -20 || true
+          for T in ld64 ld ld-classic; do
+            echo "== target $T"
+            xcodebuild -project ld64.xcodeproj -target "$T" \
+              -configuration Release -sdk iphoneos ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+              IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+              CONFIGURATION_BUILD_DIR="$PWD/out" build 2>&1 | tail -12 || true
+          done
           BIN="$(find . -name ld64 -type f -perm -u+x | head -1)"
           if [ -z "$BIN" ]; then echo "::warning::未找到 ld64 产物"; exit 0; fi
           cp "$BIN" ../out/usr/bin/ld64
@@ -68,6 +72,7 @@ jobs:
           curl -L --retry 3 -o make.tar.gz "https://ftp.gnu.org/gnu/make/make-${V}.tar.gz"
           mkdir -p makesrc && tar xzf make.tar.gz -C makesrc --strip-components=1
           cd makesrc
+          ac_cv_type_uintmax_t=yes ac_cv_type_intmax_t=yes \
           ./configure --host=arm64-apple-darwin --disable-nls --without-guile \
             CC="$(xcrun --sdk iphoneos -f clang)" \
             CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=15.0 -O2 -Wno-error" \
