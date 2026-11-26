@@ -10,6 +10,8 @@ static NSString *const kInstalledVersionKey = @"Workbench.toolchainVersion";
 @interface SPToolchainInstaller ()
 @property (nonatomic, strong) dispatch_queue_t queue;
 @property (nonatomic, assign) BOOL installing;
+@end
+
 @implementation SPToolchainInstaller
 
 + (instancetype)shared {
@@ -195,6 +197,9 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     };
 
     NSString *root = self.installRoot;
+    // 优先用 Swift 6.x 自带的 clang-21（更新的 C/C++/ObjC 前端）；
+    // 没有时回落到 theos-root 的 clang-16。
+    addDir([root stringByAppendingPathComponent:@"swift-toolchain/usr/bin"]);
     // 真实 clang / clang++ 所在
     addDir([root stringByAppendingPathComponent:@"usr/lib/llvm-16/bin"]);
     addDir([root stringByAppendingPathComponent:@"theos-root/usr/lib/llvm-16/bin"]);

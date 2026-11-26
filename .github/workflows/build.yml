@@ -196,6 +196,27 @@ jobs:
           done
           ls BundledToolchain/reverse/bin | head -5
 
+      - name: 刷新 Theos makefiles（上游最新）
+        run: |
+          set -euo pipefail
+          # Theos 上游长期只更新 makefiles / bin，工具链单独维护。
+          # 这里把 makefiles 与 bin 换成上游最新（固定 commit，可复现），
+          # 工具链仍用包内的 theos-root（clang-16 / ld64 / ldid / perl）。
+          PIN=8167f59de02fd32cf45b16bfcb1330dfa5c9974c
+          rm -rf /tmp/theos-upstream
+          git init -q /tmp/theos-upstream
+          git -C /tmp/theos-upstream fetch -q --depth 1 https://github.com/theos/theos.git "$PIN"
+          git -C /tmp/theos-upstream checkout -q FETCH_HEAD
+          for dir in makefiles bin; do
+            if [ -d "/tmp/theos-upstream/$dir" ]; then
+              rm -rf "BundledToolchain/theos-full/$dir"
+              cp -R "/tmp/theos-upstream/$dir" "BundledToolchain/theos-full/$dir"
+              echo "  updated theos-full/$dir"
+            fi
+          done
+          head -3 BundledToolchain/theos-full/makefiles/common.mk
+          ls BundledToolchain/theos-full/bin | head -5
+
       - name: 裁剪内置工具链
         run: |
           set -euo pipefail

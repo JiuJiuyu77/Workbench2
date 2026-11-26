@@ -1,3 +1,10 @@
+## 1.3.2 · Build297
+
+1. 内置 Theos 的 `makefiles/` 与 `bin/` 每轮构建时刷新到上游最新（固定 commit `8167f59d`），工具链仍用包内 theos-root。
+2. 编译前端优先使用 Swift 6.4.3 自带的 **clang-21**（比 theos-root 的 clang-16 新），缺失时自动回落。
+3. 修复 `SPToolchainInstaller` 类扩展缺少 `@end` 导致的编译失败。
+4. 版本 1.3.2（297）。
+
 ## 1.3.1 · Build296
 
 1. 内置 Swift 升级到 **6.4.3**（原 5.9.2）：用 swift.org 官方 osx 工具链按 kabiroberai/swift-toolchain-ios 的思路裁剪为 iOS 可用形态（只保留 bin + lib/swift/{clang,iphoneos,shims,migrator}，arm64 单架构），228MB，随包离线可用。
