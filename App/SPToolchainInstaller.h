@@ -49,14 +49,6 @@ typedef void (^SPInstallCompletion)(BOOL ok, NSError *_Nullable error);
 - (void)reinstallWithProgress:(nullable SPInstallProgress)progress
                    completion:(SPInstallCompletion)completion;
 
-/// 导入外部 Swift 工具链（zip 或含 usr/bin/swiftc 的目录）。
-/// 解到 Documents/Workbench/SwiftToolchain，优先于内置 5.9.2 使用。
-- (void)importSwiftToolchainAtURL:(NSURL *)url
-                       completion:(void (^)(BOOL ok, NSString * _Nullable version, NSError * _Nullable error))completion;
-
-/// 当前生效的 Swift 版本（读 swiftc --version，没有则 nil）
-- (nullable NSString *)swiftVersion;
-
 /// 卸载（释放空间）
 - (void)uninstall;
 

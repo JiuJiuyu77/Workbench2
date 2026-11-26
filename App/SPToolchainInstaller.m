@@ -241,10 +241,6 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     addDir(@"/var/jb/usr/bin");
     // 按需下载的 Swift 工具链（SPComponentSwift）解在 installRoot/swift-toolchain，
     // swiftc 与标准库都在这里；Theos 的 swift-support 靠 PATH 找 swiftc。
-    // 用户导入的 Swift 工具链优先（Documents/Workbench/SwiftToolchain），其次内置 5.9.2。
-    NSString *importedSwift = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Workbench/SwiftToolchain"];
-    addDir([importedSwift stringByAppendingPathComponent:@"usr/bin"]);
-    addDir([importedSwift stringByAppendingPathComponent:@"bin"]);
     NSString *swiftRoot = [self.installRoot stringByAppendingPathComponent:@"swift-toolchain"];
     addDir([swiftRoot stringByAppendingPathComponent:@"usr/bin"]);
     addDir([swiftRoot stringByAppendingPathComponent:@"usr/lib/swift"]);
@@ -581,108 +577,6 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
 - (void)uninstall {
     [NSFileManager.defaultManager removeItemAtPath:self.installRoot error:NULL];
     [[NSUserDefaults standardUserDefaults] removeObjectForKey:kInstalledVersionKey];
-}
-
-#pragma mark - Swift 工具链导入
-
-- (NSString *)importedSwiftRoot {
-    return [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Workbench/SwiftToolchain"];
-}
-
-- (void)importSwiftToolchainAtURL:(NSURL *)url
-                       completion:(void (^)(BOOL, NSString *, NSError *))completion {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSError *error = nil;
-        BOOL scoped = [url startAccessingSecurityScopedResource];
-        NSString *root = [self importedSwiftRoot];
-        NSFileManager *fm = NSFileManager.defaultManager;
-        [fm createDirectoryAtPath:[root stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:NULL];
-        NSString *staging = [root stringByAppendingPathExtension:@"staging"];
-        [fm removeItemAtPath:staging error:NULL];
-        BOOL isDir = NO;
-        if (![fm fileExistsAtPath:url.path isDirectory:&isDir]) {
-            error = [NSError errorWithDomain:@"Workbench.Swift" code:1
-                                    userInfo:@{NSLocalizedDescriptionKey: @"所选文件不存在"}];
-        }
-        if (!error) {
-            if (isDir) {
-                if (![fm copyItemAtPath:url.path toPath:staging error:&error]) {
-                    [fm removeItemAtPath:staging error:NULL];
-                }
-            } else {
-                if (!TMCExtractArchive(url, [NSURL fileURLWithPath:staging], nil, nil, nil, &error)) {
-                    [fm removeItemAtPath:staging error:NULL];
-                }
-            }
-        }
-        if (scoped) [url stopAccessingSecurityScopedResource];
-
-        // 允许压缩包多包一层；找到含 usr/bin/swiftc（或 bin/swiftc）的那层作为根
-        if (!error) {
-            NSString *found = nil;
-            NSArray *candidates = @[[staging stringByAppendingPathComponent:@"usr/bin/swiftc"],
-                                    [staging stringByAppendingPathComponent:@"bin/swiftc"]];
-            for (NSString *c in candidates) if ([fm fileExistsAtPath:c]) { found = staging; break; }
-            if (!found) {
-                NSDirectoryEnumerator *e = [fm enumeratorAtPath:staging];
-                for (NSString *rel in e) {
-                    if (![rel hasSuffix:@"usr/bin/swiftc"]) continue;
-                    found = [[staging stringByAppendingPathComponent:rel] stringByDeletingLastPathComponent];
-                    found = [found stringByDeletingLastPathComponent];
-                    found = [found stringByDeletingLastPathComponent];
-                    [e skipDescendants];
-                    break;
-                }
-            }
-            if (!found) {
-                error = [NSError errorWithDomain:@"Workbench.Swift" code:2
-                                        userInfo:@{NSLocalizedDescriptionKey: @"没有找到 usr/bin/swiftc，请导入完整的 Swift 工具链"}];
-                [fm removeItemAtPath:staging error:NULL];
-            } else {
-                NSString *prepared = found;
-                if (![prepared isEqualToString:staging]) {
-                    // 把工具链根搬平到 staging
-                    NSString *flat = [staging stringByAppendingPathExtension:@"flat"];
-                    [fm removeItemAtPath:flat error:NULL];
-                    if ([fm moveItemAtPath:prepared toPath:flat error:&error]) prepared = flat;
-                }
-                if (!error) {
-                    [fm removeItemAtPath:root error:NULL];
-                    if (![fm moveItemAtPath:prepared toPath:root error:&error]) {
-                        [fm removeItemAtPath:staging error:NULL];
-                        [fm removeItemAtPath:[staging stringByAppendingPathExtension:@"flat"] error:NULL];
-                    } else {
-                        [fm removeItemAtPath:staging error:NULL];
-                    }
-                }
-            }
-        }
-        NSString *version = error ? nil : [self swiftVersion];
-        dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(error == nil, version, error); });
-    });
-}
-
-- (NSString *)swiftVersion {
-    NSArray *dirs = @[[self importedSwiftRoot stringByAppendingPathComponent:@"usr/bin"],
-                      [self importedSwiftRoot stringByAppendingPathComponent:@"bin"],
-                      [[self.installRoot stringByAppendingPathComponent:@"swift-toolchain"] stringByAppendingPathComponent:@"usr/bin"]];
-    for (NSString *dir in dirs) {
-        NSString *swiftc = [dir stringByAppendingPathComponent:@"swiftc"];
-        if (![NSFileManager.defaultManager fileExistsAtPath:swiftc]) continue;
-        NSTask *task = [NSTask new];
-        task.launchPath = swiftc;
-        task.arguments = @[@"--version"];
-        NSPipe *pipe = [NSPipe pipe];
-        task.standardOutput = pipe;
-        task.standardError = pipe;
-        @try { [task launch]; [task waitUntilExit]; } @catch (NSException *e) { continue; }
-        NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
-        NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-        for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
-            if ([line rangeOfString:@"Swift version"].location != NSNotFound) return line;
-        }
-    }
-    return nil;
 }
 
 @end
