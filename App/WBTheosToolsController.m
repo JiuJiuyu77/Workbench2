@@ -14,6 +14,42 @@
 @property (nonatomic, assign) BOOL busy;
 @end
 
+
+#pragma mark - 版本
+
+static NSString *WBRunVersion(NSString *path, NSArray<NSString *> *args) {
+    if (![NSFileManager.defaultManager isExecutableFileAtPath:path]) return nil;
+    NSTask *task = [NSTask new];
+    task.launchPath = path;
+    task.arguments = args;
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    task.standardError = pipe;
+    @try { [task launch]; [task waitUntilExit]; } @catch (__unused NSException *e) { return nil; }
+    NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
+    NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    return [text componentsSeparatedByString:@"\n"].firstObject;
+}
+
+static NSArray<NSArray<NSString *> *> *WBInstalledVersions(void) {
+    NSString *root = [SPToolchainInstaller shared].installRoot ?: [NSBundle.mainBundle bundlePath];
+    NSMutableArray *rows = [NSMutableArray array];
+    void (^add)(NSString *, NSString *, NSArray<NSString *> *) = ^(NSString *title, NSString *rel, NSArray<NSString *> *args) {
+        NSString *path = [root stringByAppendingPathComponent:rel];
+        NSString *version = WBRunVersion(path, args) ?: @"未安装";
+        [rows addObject:@[title, version]];
+    };
+    add(@"clang", @"ollvm/bin/clang", @[@"--version"]);
+    add(@"ld64", @"bin-lld/ld64", @[@"--version"]);
+    add(@"ldid", @"theos-root/usr/bin/ldid", @[@"-v"]);
+    add(@"make", @"theos-root/usr/bin/make", @[@"--version"]);
+    add(@"perl", @"theos-root/usr/bin/perl", @[@"-e", @"printf \"%vd\\n\", $^V"]);
+    add(@"swiftc", @"swift-toolchain/usr/bin/swiftc", @[@"--version"]);
+    add(@"r2", @"reverse/bin/r2", @[@"-v"]);
+    add(@"ld64.lld", @"swift-toolchain/usr/bin/ld64.lld", @[@"--version"]);
+    return rows;
+}
+
 @implementation WBTheosToolsListController
 
 - (void)viewDidLoad {
