@@ -1,0 +1,102 @@
+name: theos-tools-ios
+
+# 自己编译 Theos 需要、但 iOS 上没有现成预编译的工具（iOS arm64）。
+# 目前覆盖：ld64（Apple 开源 ld64）、GNU make。
+# 产物发布到本仓库 Release：tag `ios-tools-<版本>`，文件名 ios-tools.tar.gz。
+#
+# 说明：perl / dpkg 交叉编译成本很高（需要目标 libc 与大量补丁），
+# 这两项仍使用包内 theos-root 自带版本；本源可达时优先用源里的新包。
+
+on:
+  workflow_dispatch:
+    inputs:
+      ld64_tag:
+        description: 'ld64 版本 tag'
+        required: false
+        default: 'ld64-951.9'
+      make_version:
+        description: 'GNU make 版本'
+        required: false
+        default: '4.4.1'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 准备目录
+        run: |
+          set -euo pipefail
+          mkdir -p out/usr/bin
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          echo "SDK=$SDK" >> "$GITHUB_ENV"
+          echo "CC_IOS=$(xcrun --sdk iphoneos -f clang)" >> "$GITHUB_ENV"
+
+      - name: 编译 ld64
+        id: ld64
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.ld64_tag }}"
+          curl -L --retry 3 -o ld64.tar.gz "https://github.com/apple-oss-distributions/ld64/archive/refs/tags/${TAG}.tar.gz"
+          mkdir -p ld64src && tar xzf ld64.tar.gz -C ld64src --strip-components=1
+          cd ld64src
+          chmod +x configure
+          # ld64 自带的 configure 支持 --target；用 iOS 交叉编译
+          ./configure --target=arm64-apple-ios15.0 \
+            CC="$(xcrun --sdk iphoneos -f clang)" \
+            CXX="$(xcrun --sdk iphoneos -f clang++)" \
+            CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=15.0 -O2 -Wno-error" \
+            CXXFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=15.0 -O2 -Wno-error" \
+            LDFLAGS="-arch arm64 -isysroot $SDK" 2>&1 | tail -20 || { echo "::warning::configure 失败"; exit 0; }
+          make -j8 2>&1 | tail -30 || { echo "::warning::make 失败"; exit 0; }
+          BIN="$(find . -name ld64 -type f -perm -u+x | head -1)"
+          [ -n "$BIN" ] || { echo "::warning::未找到 ld64 产物"; exit 0; }
+          cp "$BIN" ../out/usr/bin/ld64
+          chmod +x ../out/usr/bin/ld64
+          echo "built=1" >> "$GITHUB_OUTPUT"
+          ../out/usr/bin/ld64 -v 2>&1 | head -2 || true
+
+      - name: 编译 GNU make
+        id: make
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          V="${{ inputs.make_version }}"
+          curl -L --retry 3 -o make.tar.gz "https://ftp.gnu.org/gnu/make/make-${V}.tar.gz"
+          mkdir -p makesrc && tar xzf make.tar.gz -C makesrc --strip-components=1
+          cd makesrc
+          ./configure --host=arm64-apple-darwin --disable-nls --without-guile \
+            CC="$(xcrun --sdk iphoneos -f clang)" \
+            CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=15.0 -O2 -Wno-error" \
+            LDFLAGS="-arch arm64 -isysroot $SDK" 2>&1 | tail -15 || { echo "::warning::configure 失败"; exit 0; }
+          make -j8 2>&1 | tail -25 || { echo "::warning::make 构建失败"; exit 0; }
+          cp src/make ../out/usr/bin/make
+          chmod +x ../out/usr/bin/make
+          echo "built=1" >> "$GITHUB_OUTPUT"
+
+      - name: 打包
+        id: pack
+        run: |
+          set -euo pipefail
+          ls -l out/usr/bin || true
+          if [ -z "$(ls -A out/usr/bin)" ]; then echo "::warning::没有任何产物"; exit 0; fi
+          tar czf ios-tools.tar.gz -C out usr
+          ls -lh ios-tools.tar.gz
+          shasum -a 256 ios-tools.tar.gz | tee ios-tools.sha256
+          echo "ok=1" >> "$GITHUB_OUTPUT"
+
+      - name: 发布
+        if: steps.pack.outputs.ok == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="ios-tools-${{ inputs.make_version }}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "自编 Theos 工具（iOS arm64）" \
+            --notes "ld64（apple-oss-distributions）与 GNU make 的 arm64-apple-ios 构建。"
+          gh release upload "$TAG" ios-tools.tar.gz ios-tools.sha256 --clobber
