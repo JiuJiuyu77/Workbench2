@@ -141,8 +141,8 @@ static BOOL WBFileExists(NSString *p) {
     // 3. 工具链组件
     NSArray *toolchainChecks = @[
         @[@"theos.makefiles", @"theos-full/makefiles/common.mk", @"Theos makefiles"],
-        @[@"clang16", @"theos-root/usr/bin/clang-16", @"编译器 clang-16"],
-        @[@"ld64", @"theos-root/usr/bin/ld64", @"链接器 ld64"],
+        @[@"clang", @"ollvm/bin/clang", @"编译器 clang 23"],
+        @[@"ld64", @"bin-lld/ld64", @"链接器（ld64.lld）"],
         @[@"ldid", @"theos-root/usr/bin/ldid", @"签名工具 ldid"],
         @[@"make", @"theos-root/usr/bin/make", @"GNU make"],
         @[@"perl", @"theos-root/usr/bin/perl", @"Perl（Logos 预处理）"],
@@ -151,6 +151,7 @@ static BOOL WBFileExists(NSString *p) {
         @[@"r2", @"reverse/bin/r2", @"radare2"],
         @[@"mtmacho", @"reverse/bin/mt-macho", @"mt-macho"],
         @[@"swiftc", @"swift-toolchain/usr/bin/swiftc", @"Swift 编译器"],
+        @[@"ld64lld", @"swift-toolchain/usr/bin/ld64.lld", @"lld 链接器"],
     ];
     for (NSArray *row in toolchainChecks) {
         NSString *path = [tc stringByAppendingPathComponent:row[1]];

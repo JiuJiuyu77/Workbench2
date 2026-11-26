@@ -1,3 +1,11 @@
+## 1.3.8 · Build303
+
+1. 修复工具链判定：`isInstalled` 不再检查已删除的 clang-16，改判 `ollvm/bin/clang` + `bin-lld/ld64` + `swift-toolchain/usr/bin/swiftc`（此前会误判「未安装」导致构建被拦）。
+2. `bundledRoot` 标记改为 `theos-full/makefiles/common.mk`（原来依赖 clang-16 标记，包内布局识别失败）。
+3. 环境自检对齐新工具链：clang 23 / 链接器 shim / ld64.lld，去掉 clang-16 项。
+4. 清理 dylix 残留：下载清单移除已内嵌的 node / buildtools / python，Swift 条目改为 6.4.3（指向本仓 Release）。
+5. 版本 1.3.8（303）。
+
 ## 1.3.5 · Build300
 
 1. **编译前端与链接器全面上新**：clang / LLVM 用 **Arkari LLVM 23.1.1**（不传 `-irobf` 即普通 clang 23），链接器用 Swift 6.4.3 自带的 **ld64.lld（LLVM 21）**，通过 `bin-lld/{ld,ld64}` shim 过滤 Apple ld64 专有的 `-adhoc_codesign`（改由 ldid 补签）。

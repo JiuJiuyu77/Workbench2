@@ -50,7 +50,7 @@ static NSString *const kInstalledVersionKey = @"Workbench.toolchainVersion";
     // 新版：运行时**平铺在 .app 根目录**（与 Rein 一致）
     //   Workbench.app/theos-root/  helpers/  sdks/
     NSString *bundle = [NSBundle mainBundle].bundlePath;
-    NSString *flatMarker = [bundle stringByAppendingPathComponent:@"theos-root/usr/bin/clang-16"];
+    NSString *flatMarker = [bundle stringByAppendingPathComponent:@"theos-full/makefiles/common.mk"];
     if ([NSFileManager.defaultManager fileExistsAtPath:flatMarker]) return bundle;
 
     // 兼容旧版：Resources/Toolchain 作为 folder reference 拷进 .app
@@ -343,9 +343,18 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     // 实测出现过「文件明明在（010755）却返回 NO」，
     // 导致 isInstalled 为假 → 整个工具链被判定为未安装 → 报「找不到 SDK」。
     // 这里只判「存在且是常规文件」，是否可执行交给实际运行时报错。
+    // 前端已换成 clang 23（ollvm/bin），链接器是 bin-lld 的 ld64 shim；
+    // 不再检查已删除的 clang-16，否则会把「已安装」误判成未安装。
     BOOL hasCompiler = NO;
-    for (NSString *d in @[self.binDir, self.baseBinDir]) {
-        for (NSString *b in @[@"ld64", @"clang-16", @"clang"]) {
+    NSArray *compilerPaths = @[[self.installRoot stringByAppendingPathComponent:@"ollvm/bin/clang"],
+                               [self.installRoot stringByAppendingPathComponent:@"bin-lld/ld64"],
+                               [self.installRoot stringByAppendingPathComponent:@"swift-toolchain/usr/bin/swiftc"]];
+    for (NSString *p in compilerPaths) {
+        BOOL isDir = NO;
+        if ([[NSFileManager defaultManager] fileExistsAtPath:p isDirectory:&isDir] && !isDir) { hasCompiler = YES; break; }
+    }
+    for (NSString *d in hasCompiler ? @[] : @[self.binDir, self.baseBinDir]) {
+        for (NSString *b in @[@"ld64", @"clang"]) {
             NSString *p = [d stringByAppendingPathComponent:b];
             BOOL isDir = NO;
             if ([fm fileExistsAtPath:p isDirectory:&isDir] && !isDir) { hasCompiler = YES; break; }
@@ -528,7 +537,7 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     // 编译链逐个确认「存在且可执行」。
     // 只判存在不够：分包解压出来是 444（只读），没有执行位照样跑不起来，
     // 而且报错是 posix_spawn 失败（退出码 -1），完全看不出是权限问题。
-    for (NSString *tool in @[@"clang-16", @"ld64", @"ldid", @"make", @"dpkg-deb", @"perl"]) {
+    for (NSString *tool in @[@"ldid", @"make", @"dpkg-deb", @"perl", @"ld64"]) {
         NSString *p = [self.binDir stringByAppendingPathComponent:tool];
         if (![fm isExecutableFileAtPath:p]) {
             p = [self.baseBinDir stringByAppendingPathComponent:tool];
