@@ -1,3 +1,11 @@
+## 1.3.3 · Build298
+
+1. 内嵌 **Orion 1.0.2**（theos 官方纯 Swift tweak 框架）：`Toolchain/orion/`。
+2. 内嵌 **ldid 2.1.5-procursus8**（iphoneos-arm64 最新版），替换 theos-root 里的旧 ldid。
+3. 内嵌 **ccache 4.14.3**（darwin arm64）+ `bin-ccache/` 包装器；构建时自动挂到 PATH 最前，命中缓存。可用 `CCACHE_DIR` 控制缓存位置。
+4. 编译前端继续优先 clang-21（Swift 6.4.3），OLLVM 仍是 Arkari 16.0.6（上游无更新版）。
+5. 版本 1.3.3（298）。
+
 ## 1.3.2 · Build297
 
 1. 内置 Theos 的 `makefiles/` 与 `bin/` 每轮构建时刷新到上游最新（固定 commit `8167f59d`），工具链仍用包内 theos-root。

@@ -217,6 +217,9 @@ jobs:
           head -3 BundledToolchain/theos-full/makefiles/common.mk
           ls BundledToolchain/theos-full/bin | head -5
 
+      - name: 内嵌 ldid / Orion / ccache
+        run: bash scripts/prepare_bundle_extras.sh BundledToolchain
+
       - name: 裁剪内置工具链
         run: |
           set -euo pipefail

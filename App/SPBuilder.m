@@ -178,6 +178,9 @@
         [lines addObject:[NSString stringWithFormat:@"export PATH=%@:\"$PATH\"", [SPUtil shellQuote:pathPrefix]]];
     }
 
+    // ccache：存在包装器就放 PATH 最前（Theos 直接调 clang 时会命中缓存）
+    [lines addObject:@"if [ -x \"$SPARK_TC/bin-ccache/clang\" ] && [ -x \"$SPARK_TC/ccache\" ]; then export PATH=\"$SPARK_TC/bin-ccache:$PATH\"; export CCACHE_DIR=\"$HOME/Library/Caches/Workbench/ccache\"; ok 'ccache 已启用'; fi"];
+
     // OLLVM 时把 CC/CXX 指向混淆编译器
     if (options.useOLLVM && profile.ollvmRoot.length) {
         NSString *clang = [profile.ollvmRoot stringByAppendingPathComponent:@"bin/clang"];
