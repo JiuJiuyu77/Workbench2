@@ -37,7 +37,9 @@ def drop(path: Path):
     freed += size
 
 
-swift_bin = root / 'swift-toolchain/usr/lib/llvm-16/bin'
+swift_bin = root / 'swift-toolchain/usr/bin'
+if not swift_bin.is_dir():
+    swift_bin = root / 'swift-toolchain/usr/lib/llvm-16/bin'
 if swift_bin.is_dir():
     # SIL 调试工具每个都是 ~150MB 的独立二进制，Theos 构建从不调用。
     keep = {'swift', 'swiftc', 'swift-frontend', 'swift-driver', 'swift-autolink-extract',

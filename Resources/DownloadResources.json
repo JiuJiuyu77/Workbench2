@@ -25,11 +25,11 @@
  },
  {
   "id": "swift-toolchain",
-  "title": "Swift 5.9.2 工具链",
+  "title": "Swift 6.4.3 工具链",
   "file": "SwiftToolchain.tar.gz",
-  "bytes": 491774539,
-  "sha256": "6f6e3d27f16ff5dfc6a73e50287c99e784f8126db6aef58ffc29ae0f2a88e238",
-  "url": "https://github.com/JiuJiuyu77/Workbench-Runtime/releases/download/runtime-v3/SwiftToolchain.tar.gz"
+  "bytes": 239851291,
+  "sha256": "826d177b74b1e5629440e8241ead2e528febb384924a3d1249dec87054de408b",
+  "url": "https://github.com/JiuJiuyu77/Workbench2/releases/download/swift-6.4.3/SwiftToolchain.tar.gz"
  },
  {
   "id": "theos-extras",

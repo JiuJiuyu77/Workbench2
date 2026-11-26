@@ -1,3 +1,9 @@
+## 1.3.1 · Build296
+
+1. 内置 Swift 升级到 **6.4.3**（原 5.9.2）：用 swift.org 官方 osx 工具链按 kabiroberai/swift-toolchain-ios 的思路裁剪为 iOS 可用形态（只保留 bin + lib/swift/{clang,iphoneos,shims,migrator}，arm64 单架构），228MB，随包离线可用。
+2. 新增 `.github/workflows/swift-toolchain.yml`：一条命令即可重新产出该工具链并发布到 Release（tag `swift-<版本>`）。
+3. 版本 1.3.1（296）。
+
 ## 1.3.0 · Build295
 
 1. 修复设置页闪退：工厂返回的 TMCNavigationController 直接塞进现有导航栈会抛 “Pushing a navigation controller into a navigation stack is not supported”，现在先取顶层控制器再 push。
