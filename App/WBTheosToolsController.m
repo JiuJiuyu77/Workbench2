@@ -121,15 +121,6 @@
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (self.busy) return;
 
-    if (indexPath.section == 2) {
-        NSArray<NSString *> *row = WBInstalledVersions()[(NSUInteger)indexPath.row];
-        cell.textLabel.text = row[0];
-        cell.detailTextLabel.text = row[1];
-        cell.detailTextLabel.numberOfLines = 2;
-        cell.imageView.image = [UIImage systemImageNamed:@"number.circle"];
-        cell.imageView.tintColor = [row[1] isEqualToString:@"未安装"] ? UIColor.systemOrangeColor : UIColor.systemGreenColor;
-        return cell;
-    }
     if (indexPath.section == 0) {
         SPToolchainInstaller *inst = [SPToolchainInstaller shared];
         if (inst.isInstalled) return;
