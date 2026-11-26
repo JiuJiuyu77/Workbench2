@@ -26,6 +26,8 @@ def _resolve_entitlements():
     if isinstance(ent.get('keychain-access-groups'), list):
         ent['keychain-access-groups'] = [args.bundle_id if 'Workbench' in str(v) else v
                                         for v in ent['keychain-access-groups']]
+    if isinstance(ent.get('com.apple.security.application-groups'), list):
+        ent['com.apple.security.application-groups'] = ['group.' + args.bundle_id]
     if isinstance(ent.get('application-identifier'), str):
         ent['application-identifier'] = ent['application-identifier'].replace('com.HuQing.Workbench', args.bundle_id)
     out = ROOT / 'build' / platform / 'app-entitlements.plist'
@@ -352,7 +354,10 @@ if args.share_profile:
     shutil.copy2(args.share_profile, share / 'embedded.mobileprovision')
 subprocess.run(share_cmd,check=True)
 share_entitlements=ROOT / 'build' / platform / 'share-entitlements.plist'
-share_entitlements.write_bytes(plistlib.dumps(profile_rights[1] if profile_rights else {'com.apple.security.application-groups':['group.com.xuegao.workbench.share']}))
+# 没有描述文件（TrollStore 构建）时，共享扩展的 app group 必须和主程序一致，
+# 否则扩展无法访问共享容器。统一用 --bundle-id 派生，不再写死 dylix 时代的域名。
+_share_group = 'group.' + args.bundle_id
+share_entitlements.write_bytes(plistlib.dumps(profile_rights[1] if profile_rights else {'com.apple.security.application-groups': [_share_group]}))
 sign_flags=[] if args.simulator else ['--entitlements',str(share_entitlements)]
 subprocess.run(['codesign','--force','--sign',args.identity,*sign_flags,str(share)],check=True)
 main_sign_flags=sign_flags

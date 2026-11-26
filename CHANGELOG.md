@@ -1,7 +1,8 @@
 ## 1.3.9 · Build304
 
 1. 修复 TrollStore 安装失败（`ldid: Unsupported Mach-O type`）：打包前清理 Toolchain 里不可签名的 Mach-O —— `MH_OBJECT`（.o）、`MH_DSYM`、`*.dSYM`、`*.d` 等构建中间产物；只保留 `MH_EXECUTE` / `MH_DYLIB` / `MH_BUNDLE`。
-2. 版本 1.3.9（304）。
+2. 修复 app group 不一致：共享扩展原来写死 dylix 时代的 `group.com.xuegao.workbench.share`，与主程序的 `group.com.HuQing.Workbench` 不符（共享会失败）；现在两者都由 `--bundle-id` 派生为 `group.<bundle-id>`。
+3. 版本 1.3.9（304）。
 
 ## 1.3.8 · Build303
 
