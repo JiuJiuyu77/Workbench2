@@ -56,21 +56,21 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 --recursive --shallow-submodules https://github.com/tpoechtrager/apple-libtapi.git tapi
-          cd tapi && git log --oneline -1 && ls src/llvm-project | head
+          cd tapi && git log --oneline -1 && ls src
 
       - name: libtapi 宿主 tblgen（macOS）
         continue-on-error: true
         run: |
           set -euo pipefail
           cd tapi
-          cmake -S src/llvm-project/llvm -B /tmp/hostllvm -G Ninja \
+          cmake -S src/llvm -B /tmp/hostllvm -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$HOSTCC" -DCMAKE_CXX_COMPILER="$HOSTCXX" \
             -DLLVM_TARGETS_TO_BUILD=host -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_DOCS=OFF \
             -DLLVM_ENABLE_PROJECTS= 2>&1 | tail -8
           cmake --build /tmp/hostllvm --target llvm-tblgen llvm-min-tblgen -j8 2>&1 | tail -15 || \
             cmake --build /tmp/hostllvm --target llvm-tblgen -j8 2>&1 | tail -15
           ls /tmp/hostllvm/bin | head -10
-          cmake -S src/llvm-project/clang -B /tmp/hostclang -G Ninja \
+          cmake -S src/clang -B /tmp/hostclang -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$HOSTCC" -DCMAKE_CXX_COMPILER="$HOSTCXX" \
             -DLLVM_DIR=/tmp/hostllvm/lib/cmake/llvm -DCLANG_ENABLE_STATIC_ANALYZER=OFF \
             -DCLANG_ENABLE_ARCMT=OFF 2>&1 | tail -8
@@ -85,7 +85,7 @@ jobs:
           TBL="$(ls /tmp/hostllvm/bin/llvm-tblgen 2>/dev/null || true)"
           CTBL="$(ls /tmp/hostclang/bin/clang-tblgen 2>/dev/null || true)"
           echo "LLVM_TABLEGEN=$TBL CLANG_TABLEGEN=$CTBL"
-          cmake -S src/llvm-project/tapi -B /tmp/tapiios -G Ninja \
+          cmake -S src/tapi -B /tmp/tapiios -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER="$IOSCC" -DCMAKE_CXX_COMPILER="$IOSCXX" \
             -DCMAKE_C_FLAGS="$IOSFLAGS" -DCMAKE_CXX_FLAGS="$IOSFLAGS" \
