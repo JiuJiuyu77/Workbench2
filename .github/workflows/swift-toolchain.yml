@@ -1,0 +1,100 @@
+name: swift-toolchain
+
+# 一次性/可重跑：把 swift.org 官方 osx 工具链裁剪成 iOS 可用的 SwiftToolchain.tar.gz，
+# 并上传到本仓库 Release（tag = swift-<版本>）。
+# 裁剪规则取自 kabiroberai/swift-toolchain-ios：只保留 bin + lib/swift/{clang,iphoneos,shims,migrator}。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Swift 版本（如 6.4.3）'
+        required: false
+        default: '6.4.3'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载 swift.org 工具链
+        id: dl
+        run: |
+          set -euo pipefail
+          V="${{ inputs.version }}"
+          URL="https://download.swift.org/swift-${V}-release/xcode/swift-${V}-RELEASE/swift-${V}-RELEASE-osx.pkg"
+          echo "==> $URL"
+          curl -L --retry 3 --retry-delay 5 -o swift.pkg "$URL"
+          ls -lh swift.pkg
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: 解包并裁剪
+        run: |
+          set -euo pipefail
+          xar -xf swift.pkg
+          INNER=$(ls -d swift-*-RELEASE-osx-package.pkg)
+          ( cd "$INNER" && tar xzf Payload )
+          SRC="$INNER/usr"
+          du -sh "$SRC"
+
+          # 只保留 iOS 构建需要的部分
+          rm -rf "$SRC/libexec" "$SRC/local" "$SRC/share" "$SRC/include"
+          rm -rf "$SRC/lib/swift_static"
+          rm -rf "$SRC/lib/swift"/{macosx,host,embedded,iphonesimulator,watchos,watchsimulator,xros,xrsimulator,tvos,tvsimulator,pm,apinotes,_InternalSwiftStaticMirror} 2>/dev/null || true
+          rm -f "$SRC/lib/libLTO.dylib" "$SRC/lib/libclang.dylib" "$SRC/lib/libswiftDemangle.dylib"
+          rm -rf "$SRC/lib/sourcekitd.framework"
+
+          # 去掉 SwiftPM / 调试 / 语言服务器等构建用不到的可执行文件
+          BIN="$SRC/bin"
+          rm -f "$BIN"/{swift-package,sourcekit-lsp,clangd,lldb,lldb-server,lldb-dap,lldb-mcp,docc,clang-cache,clang-cl,clang-cpp,lld,lld-link,ld.lld,dsymutil,llvm-cov,llvm-objdump,llvm-nm,llvm-objcopy,llvm-ranlib,llvm-strip,llvm-size,llvm-readobj,llvm-profdata,wasmkit,llvm-symbolizer,swift-ide-test,swift-api-digester,swift-api-dump.py,swift-symbolgraph-extract,swift-format,swift-format-legacy,swift-sdk,swift-experimental-sdk,swift-build,swift-test,swift-run,swift-frontend-legacy} 2>/dev/null || true
+          rm -f "$BIN"/swift-api-* 2>/dev/null || true
+
+          # 压成单架构 arm64
+          find "$SRC" -type f | while read -r f; do
+            lipo -info "$f" 2>/dev/null | grep -q "is architecture" && continue
+            lipo -info "$f" 2>/dev/null | grep -q "Non-fat" && continue
+            lipo -thin arm64 -output "$f.thin" "$f" 2>/dev/null && mv "$f.thin" "$f" || rm -f "$f.thin"
+          done
+
+          du -sh "$SRC"
+          test -x "$SRC/bin/swiftc" || { echo "::error::缺少 swiftc"; exit 1; }
+          test -d "$SRC/lib/swift/iphoneos" || { echo "::error::缺少 iphoneos 标准库"; exit 1; }
+          ls "$SRC/bin" | head -20
+
+      - name: 打包
+        id: pack
+        run: |
+          set -euo pipefail
+          INNER=$(ls -d swift-*-RELEASE-osx-package.pkg)
+          tar czf SwiftToolchain.tar.gz -C "$INNER" usr
+          ls -lh SwiftToolchain.tar.gz
+          SHA=$(shasum -a 256 SwiftToolchain.tar.gz | awk '{print $1}')
+          SIZE=$(stat -f%z SwiftToolchain.tar.gz)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=${{ steps.dl.outputs.version }}"
+            echo "sha256=$SHA"
+            echo "bytes=$SIZE"
+            echo
+            echo "url=https://github.com/${{ github.repository }}/releases/download/swift-${{ steps.dl.outputs.version }}/SwiftToolchain.tar.gz"
+          } | tee swift-toolchain.txt
+
+      - name: 上传到 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="swift-${{ steps.dl.outputs.version }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "Swift ${{ steps.dl.outputs.version }}（iOS 裁剪版）" \
+              --notes "由 .github/workflows/swift-toolchain.yml 生成；含 bin + lib/swift/{clang,iphoneos,shims,migrator}，arm64 单架构。"
+          fi
+          gh release upload "$TAG" SwiftToolchain.tar.gz swift-toolchain.txt --clobber
+
+      - name: 输出摘要
+        run: cat swift-toolchain.txt
