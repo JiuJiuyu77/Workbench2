@@ -156,6 +156,13 @@ static NSArray<NSString *> *SPProxyPrefixes(void) {
         c.detail = d[@"detail"];
         c.symbol = d[@"symbol"];
         c.approxSize = [d[@"size"] unsignedLongLongValue];
+
+        // 已随包内置的组件不再出现在下载列表（probe 指向包内文件）
+        NSString *probe = d[@"probe"];
+        if ([probe isKindOfClass:NSString.class] && probe.length) {
+            NSString *root = [SPToolchainInstaller shared].installRoot ?: [NSBundle.mainBundle bundlePath];
+            if ([[NSFileManager defaultManager] fileExistsAtPath:[root stringByAppendingPathComponent:probe]]) continue;
+        }
         [out addObject:c];
     }
     return out;
