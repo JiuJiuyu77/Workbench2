@@ -1,5 +1,10 @@
 name: theos-tools-ios
 
+# 实验性（默认不参与发版）：在 macos-15 上交叉编译 iOS arm64 的 ld64 / GNU make。
+# 现状：Apple ld64 的 xcodeproj 需要针对 iOS 改工程设置（textstub 等仅 macOS），
+#       GNU make 的 configure 需要修 uintmax_t 探测 —— 两者目前都未编出。
+# 主构建不依赖本工作流：链接器使用 Swift 6.4.3 自带的 ld64.lld（LLVM 21）。
+
 # 自己编译 Theos 需要、但 iOS 上没有现成预编译的工具（iOS arm64）。
 # 目前覆盖：ld64（Apple 开源 ld64）、GNU make。
 # 产物发布到本仓库 Release：tag `ios-tools-<版本>`，文件名 ios-tools.tar.gz。
@@ -54,7 +59,10 @@ jobs:
             xcodebuild -project ld64.xcodeproj -target "$T" \
               -configuration Release -sdk iphoneos ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
               IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-              CONFIGURATION_BUILD_DIR="$PWD/out" build 2>&1 | tail -12 || true
+              CONFIGURATION_BUILD_DIR="$PWD/out" \
+              OTHER_LDFLAGS='$(inherited)' GCC_TREAT_WARNINGS_AS_ERRORS=NO \
+              CLANG_CXX_LANGUAGE_STANDARD=c++17 build > "xc-$T.log" 2>&1 || true
+            grep -E "error:" "xc-$T.log" | head -8 || true
           done
           BIN="$(find . -name ld64 -type f -perm -u+x | head -1)"
           if [ -z "$BIN" ]; then echo "::warning::未找到 ld64 产物"; exit 0; fi
@@ -77,7 +85,9 @@ jobs:
             CC="$(xcrun --sdk iphoneos -f clang)" \
             CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=15.0 -O2 -Wno-error" \
             LDFLAGS="-arch arm64 -isysroot $SDK" 2>&1 | tail -15 || { echo "::warning::configure 失败"; exit 0; }
-          make -j8 2>&1 | tail -25 || { echo "::warning::make 构建失败"; exit 0; }
+          make -j8 > make.log 2>&1 || true
+          grep -E "error:" make.log | head -8 || true
+          [ -x src/make ] || { echo "::warning::make 构建失败"; exit 0; }
           cp src/make ../out/usr/bin/make
           chmod +x ../out/usr/bin/make
           echo "built=1" >> "$GITHUB_OUTPUT"
