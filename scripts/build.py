@@ -178,7 +178,7 @@ info = {
     'CFBundleExecutable': 'Workbench', 'CFBundleIdentifier': args.bundle_id,
     'CFBundleName': 'Workbench', 'CFBundleDisplayName': 'Workbench',
     'CFBundleDevelopmentRegion': 'zh-Hans', 'CFBundleLocalizations': ['zh-Hans', 'en'],
-    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.3.8', 'CFBundleVersion': '303', 'WorkbenchEdition': 'opensource',
+    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.3.9', 'CFBundleVersion': '304', 'WorkbenchEdition': 'opensource',
     'CFBundleDocumentTypes': [{'CFBundleTypeName':'Workbench Files','CFBundleTypeRole':'Editor','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','public.archive','public.source-code']}],
     'CFBundleURLTypes': [{'CFBundleURLName':'Workbench Incoming','CFBundleURLSchemes':['workbench', 'workbench']}],
     'BGTaskSchedulerPermittedIdentifiers': ['com.HuQing.Workbench.ai.processing'],
@@ -386,6 +386,50 @@ def _fat_archive(path):
                                b'\xfe\xed\xfa\xcf', b'\xfe\xed\xfa\xce')
 
 
+
+def _macho_filetype(path):
+    """返回单架构 Mach-O 的 filetype；fat/非 Mach-O 返回 None。"""
+    try:
+        with open(path, 'rb') as handle:
+            head = handle.read(16)
+    except OSError:
+        return None
+    if len(head) < 16:
+        return None
+    if head[:4] in (b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe'):
+        return int.from_bytes(head[12:16], 'little')
+    if head[:4] in (b'\xfe\xed\xfa\xcf', b'\xfe\xed\xfa\xce'):
+        return int.from_bytes(head[12:16], 'big')
+    return None
+
+
+# TrollStore 用 `ldid -s` 递归签名整个 bundle；遇到 MH_OBJECT / MH_DSYM 这类
+# 非可执行 Mach-O 会直接报 “Unsupported Mach-O type” 并整包失败。
+# 这里在打包前把它们清掉（都是构建中间产物 / 调试符号，运行时不需要）。
+_SIGNABLE_FILETYPES = {2, 6, 8}  # MH_EXECUTE / MH_DYLIB / MH_BUNDLE
+
+
+def _purge_unsupported_macho(base):
+    removed = 0
+    for path in sorted(base.rglob('*')):
+        if path.is_symlink() or not path.is_file():
+            continue
+        if path.suffix in ('.o', '.d'):
+            path.unlink()
+            removed += 1
+            continue
+        filetype = _macho_filetype(path)
+        if filetype is not None and filetype not in _SIGNABLE_FILETYPES:
+            path.unlink()
+            removed += 1
+    for d in sorted(base.rglob('*.dSYM'), reverse=True):
+        if d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+            removed += 1
+    if removed:
+        print('purged unsignable Mach-O: %d' % removed)
+
+
 def _defat_archives(base):
     thinned = dropped = 0
     for path in base.rglob('*'):
@@ -414,6 +458,7 @@ def _macho(path):
 
 if (_bundled_tc.is_dir() and any(_bundled_tc.iterdir()) and not args.simulator):
     _sign_started = time.time()
+    _purge_unsupported_macho(app / 'Toolchain')
     _defat_archives(app / 'Toolchain')
     _machos = [p for p in (app / 'Toolchain').rglob('*')
                if p.is_file() and not p.is_symlink() and _macho(p)]

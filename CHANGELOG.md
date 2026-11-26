@@ -1,3 +1,8 @@
+## 1.3.9 · Build304
+
+1. 修复 TrollStore 安装失败（`ldid: Unsupported Mach-O type`）：打包前清理 Toolchain 里不可签名的 Mach-O —— `MH_OBJECT`（.o）、`MH_DSYM`、`*.dSYM`、`*.d` 等构建中间产物；只保留 `MH_EXECUTE` / `MH_DYLIB` / `MH_BUNDLE`。
+2. 版本 1.3.9（304）。
+
 ## 1.3.8 · Build303
 
 1. 修复工具链判定：`isInstalled` 不再检查已删除的 clang-16，改判 `ollvm/bin/clang` + `bin-lld/ld64` + `swift-toolchain/usr/bin/swiftc`（此前会误判「未安装」导致构建被拦）。
