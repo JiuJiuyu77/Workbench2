@@ -1,3 +1,4 @@
+#import "SPCompat.h"
 #import "DXFlexPluginInfo.h"
 
 @interface DXFlexPluginInfo : UITableViewController

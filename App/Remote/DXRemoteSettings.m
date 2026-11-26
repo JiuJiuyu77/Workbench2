@@ -1,3 +1,4 @@
+#import "SPCompat.h"
 #import "DXRemoteService.h"
 #import "DXFlexPluginInfo.h"
 #import "../Runtime/ContractsV2.h"
