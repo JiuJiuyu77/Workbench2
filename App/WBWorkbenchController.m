@@ -15,6 +15,7 @@
 #import "Runtime/Sandbox/TFAIISHHub.h"
 
 extern UIViewController *WBStudioCrashTools(void);
+extern UIViewController *TFAIClassDumpController(void);
 
 @interface WBWorkbenchViewController : UITableViewController
 @end

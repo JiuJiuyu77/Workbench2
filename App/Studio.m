@@ -19,6 +19,7 @@
 #import "RuntimeDiagnostics.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import "Studio.h"
+#import "SPCompat.h"
 #import "Runtime/Contracts.h"
 #import "Runtime/ContractsV2.h"
 #import "CompilerController.h"
