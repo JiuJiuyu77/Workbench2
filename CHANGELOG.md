@@ -1,6 +1,7 @@
 ## 1.3.5 · Build300
 
-1. 默认编译前端改用 **Arkari LLVM 23.1.1 的 clang**（不传 `-irobf` 时即普通 clang 23），比 clang-21 / clang-16 新；混淆开启时才追加 pass 参数。
+1. **编译前端与链接器全面上新**：clang / LLVM 用 **Arkari LLVM 23.1.1**（不传 `-irobf` 即普通 clang 23），链接器用 Swift 6.4.3 自带的 **ld64.lld（LLVM 21）**，通过 `bin-lld/{ld,ld64}` shim 过滤 Apple ld64 专有的 `-adhoc_codesign`（改由 ldid 补签）。
+2. 彻底不再使用 theos-root 的 clang-16 / ld64-951.9 作为默认（保留文件以兼容极少数写死路径的工程）。
 2. 精简内嵌：只保留编译与逆向需要的 dylix 组件 —— **coretools**（git/curl/zip/unzip/patch/file/diff/rg/jq）、**ollvm 23.1.1**、**reverse**；不再内嵌 buildtools(cmake/ninja)、python、node（与设备端编译无关）。
 3. 版本 1.3.5（300）。
 

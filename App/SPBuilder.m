@@ -181,8 +181,9 @@
     // ccache：存在包装器就放 PATH 最前（Theos 直接调 clang 时会命中缓存）
     [lines addObject:@"if [ -x \"$SPARK_TC/bin-ccache/clang\" ] && [ -x \"$SPARK_TC/ccache\" ]; then export PATH=\"$SPARK_TC/bin-ccache:$PATH\"; export CCACHE_DIR=\"$HOME/Library/Caches/Workbench/ccache\"; ok 'ccache 已启用'; fi"];
 
-    // OLLVM 时把 CC/CXX 指向混淆编译器
-    if (options.useOLLVM && profile.ollvmRoot.length) {
+    // 默认编译器就用 Arkari LLVM 23 的 clang（不传 -irobf 时与上游 clang 23 等价）；
+    // 开启混淆时同一个二进制再追加 pass 参数。
+    if (profile.ollvmRoot.length) {
         NSString *clang = [profile.ollvmRoot stringByAppendingPathComponent:@"bin/clang"];
         NSString *clangxx = [profile.ollvmRoot stringByAppendingPathComponent:@"bin/clang++"];
         [lines addObject:[NSString stringWithFormat:@"export CC=%@ CXX=%@", [SPUtil shellQuote:clang], [SPUtil shellQuote:clangxx]]];

@@ -65,3 +65,28 @@ embed_component ollvm      "$RT/runtime-ollvm-23.1.1-e54f2878240e/OLLVMRuntime.t
 if [ -x "$TC/ollvm/bin/clang" ]; then
   echo "  ollvm: $("$TC/ollvm/bin/clang" --version 2>&1 | head -1)"
 fi
+
+# ---------------------------------------------------------------------------
+# 链接器：clang 23 配 Apple ld64-951.9 太旧，改用 Swift 6.4.3 自带的 ld64.lld（LLVM 21）
+# shim 负责过滤 Apple ld64 专有参数（-adhoc_codesign 由 ldid 补签）
+# ---------------------------------------------------------------------------
+if [ -x "$TC/swift-toolchain/usr/bin/ld64.lld" ]; then
+  mkdir -p "$TC/bin-lld"
+  for name in ld ld64; do
+    cat > "$TC/bin-lld/$name" <<'SHIM'
+#!/bin/bash
+# 过滤 Apple ld64 专有参数后转交 ld64.lld（LLVM 21）
+out=()
+for a in "$@"; do
+  case "$a" in
+    -adhoc_codesign) continue ;;
+    -Wl,-adhoc_codesign) continue ;;
+  esac
+  out+=("$a")
+done
+exec "$(cd "$(dirname "$0")/.." && pwd)/swift-toolchain/usr/bin/ld64.lld" "${out[@]}"
+SHIM
+    chmod +x "$TC/bin-lld/$name"
+  done
+  echo "  ld64.lld: $("$TC/swift-toolchain/usr/bin/ld64.lld" --version 2>&1 | head -1)"
+fi
