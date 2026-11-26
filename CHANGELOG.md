@@ -1,7 +1,9 @@
 ## 1.3.5 · Build300
 
 1. **编译前端与链接器全面上新**：clang / LLVM 用 **Arkari LLVM 23.1.1**（不传 `-irobf` 即普通 clang 23），链接器用 Swift 6.4.3 自带的 **ld64.lld（LLVM 21）**，通过 `bin-lld/{ld,ld64}` shim 过滤 Apple ld64 专有的 `-adhoc_codesign`（改由 ldid 补签）。
-2. 彻底不再使用 theos-root 的 clang-16 / ld64-951.9 作为默认（保留文件以兼容极少数写死路径的工程）。
+2. 移除 theos-root 自带的 clang-16 / clang++-16 / clang-cpp-16（默认前端已是 clang 23）。
+3. 工具链页新增「当前版本」分组：clang / ld64 / ldid / make / perl / swiftc / r2 / ld64.lld 实际版本。
+4. 新增 `.github/workflows/ld64-ios.yml`：在 macos-15 上自编 cctools 的 ld64（arm64-apple-ios15），产物发布到 tag `cctools-<版本>`；编不出来时主构建自动回落到 ld64.lld 21。
 2. 精简内嵌：只保留编译与逆向需要的 dylix 组件 —— **coretools**（git/curl/zip/unzip/patch/file/diff/rg/jq）、**ollvm 23.1.1**、**reverse**；不再内嵌 buildtools(cmake/ninja)、python、node（与设备端编译无关）。
 3. 版本 1.3.5（300）。
 

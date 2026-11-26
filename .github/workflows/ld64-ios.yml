@@ -1,0 +1,80 @@
+name: ld64-ios
+
+# 自己编一套「成套」的 iOS arm64 ld64（cctools 最新 Apple 开源版）。
+# 产物：ld64-<版本>-ios-arm64.tar.gz，发布到 Release tag `cctools-<版本>`。
+# 失败不阻塞主构建：主构建会回落到 Swift 6.4.3 的 ld64.lld（LLVM 21）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'cctools 版本（如 cctools-1053.13）'
+        required: false
+        default: 'cctools-1053.13'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 取 cctools 源码
+        id: src
+        run: |
+          set -euo pipefail
+          VER="${{ inputs.tag }}"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          URL="https://github.com/apple-oss-distributions/cctools/archive/refs/tags/${VER}.tar.gz"
+          echo "==> $URL"
+          curl -L --retry 3 -o cctools.tar.gz "$URL"
+          mkdir -p src && tar xzf cctools.tar.gz -C src --strip-components=1
+          ls src | head -10
+
+      - name: 交叉编译 ld64（arm64-apple-ios15）
+        run: |
+          set -euo pipefail
+          cd src
+          export CC="$(xcrun --sdk iphoneos -f clang)"
+          export CXX="$(xcrun --sdk iphoneos -f clang++)"
+          export SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          export CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=15.0 -O2 -Wno-error"
+          export CXXFLAGS="$CFLAGS"
+          export LDFLAGS="-arch arm64 -isysroot $SDK"
+          # cctools 用 apple 的 xcode 构建系统；这里用其内置的 make 驱动
+          if [ -f make_toolchain.sh ]; then
+            bash ./make_toolchain.sh 2>&1 | tail -50 || true
+          fi
+          # 退化方案：直接构建 ld64 子目录
+          if [ ! -x build/ld64 ] && [ ! -x ld64/build/ld64 ]; then
+            ( cd ld64 && xcodebuild -project ld64.xcodeproj -target ld64 \
+                -sdk iphoneos ARCHS=arm64 IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+                CODE_SIGNING_ALLOWED=NO CONFIGURATION_BUILD_DIR="$PWD/out" build ) 2>&1 | tail -40 || true
+          fi
+          find . -name ld64 -type f -perm -u+x | head -5
+
+      - name: 打包
+        id: pack
+        run: |
+          set -euo pipefail
+          BIN="$(find . -path ./src/.git -prune -o -name ld64 -type f -perm -u+x -print | head -1)"
+          if [ -z "$BIN" ]; then echo "::warning::未编出 ld64，跳过发布"; exit 0; fi
+          mkdir -p pkg/usr/bin
+          cp "$BIN" pkg/usr/bin/ld64
+          chmod +x pkg/usr/bin/ld64
+          tar czf "ld64-${{ steps.src.outputs.ver }}-ios-arm64.tar.gz" -C pkg usr
+          shasum -a 256 "ld64-${{ steps.src.outputs.ver }}-ios-arm64.tar.gz" | tee sha.txt
+          echo "ok=1" >> "$GITHUB_OUTPUT"
+
+      - name: 发布
+        if: steps.pack.outputs.ok == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="cctools-${{ steps.src.outputs.ver }}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "cctools ${{ steps.src.outputs.ver }} (iOS arm64 ld64)" --notes "自编 ld64，arm64-apple-ios15。"
+          gh release upload "$TAG" "ld64-${{ steps.src.outputs.ver }}-ios-arm64.tar.gz" sha.txt --clobber

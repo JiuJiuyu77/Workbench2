@@ -44,16 +44,19 @@
 #pragma mark - 数据
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 2;
+    return 3;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 1;
+    if (section == 2) return WBInstalledVersions().count;
     return self.items.count;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == 0 ? @"安装位置" : @"可安装组件";
+    if (section == 0) return @"安装位置";
+    if (section == 2) return @"当前版本";
+    return @"可安装组件";
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
@@ -74,6 +77,15 @@
     cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
     cell.accessoryView = nil;
 
+    if (indexPath.section == 2) {
+        NSArray<NSString *> *row = WBInstalledVersions()[(NSUInteger)indexPath.row];
+        cell.textLabel.text = row[0];
+        cell.detailTextLabel.text = row[1];
+        cell.detailTextLabel.numberOfLines = 2;
+        cell.imageView.image = [UIImage systemImageNamed:@"number.circle"];
+        cell.imageView.tintColor = [row[1] isEqualToString:@"未安装"] ? UIColor.systemOrangeColor : UIColor.systemGreenColor;
+        return cell;
+    }
     if (indexPath.section == 0) {
         SPToolchainInstaller *inst = [SPToolchainInstaller shared];
         cell.textLabel.text = inst.isInstalled ? @"已安装" : (inst.hasBundledToolchain ? @"待安装" : @"未安装");
@@ -109,6 +121,15 @@
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (self.busy) return;
 
+    if (indexPath.section == 2) {
+        NSArray<NSString *> *row = WBInstalledVersions()[(NSUInteger)indexPath.row];
+        cell.textLabel.text = row[0];
+        cell.detailTextLabel.text = row[1];
+        cell.detailTextLabel.numberOfLines = 2;
+        cell.imageView.image = [UIImage systemImageNamed:@"number.circle"];
+        cell.imageView.tintColor = [row[1] isEqualToString:@"未安装"] ? UIColor.systemOrangeColor : UIColor.systemGreenColor;
+        return cell;
+    }
     if (indexPath.section == 0) {
         SPToolchainInstaller *inst = [SPToolchainInstaller shared];
         if (inst.isInstalled) return;

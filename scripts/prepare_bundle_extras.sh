@@ -90,3 +90,12 @@ SHIM
   done
   echo "  ld64.lld: $("$TC/swift-toolchain/usr/bin/ld64.lld" --version 2>&1 | head -1)"
 fi
+
+# ---------------------------------------------------------------------------
+# 移除 theos 自带的旧 clang-16（默认前端已换成 clang 23）
+# 保留 ld64-951.9 仅作最后兜底，但不再进 PATH 前部
+# ---------------------------------------------------------------------------
+for f in clang-16 clang++-16 clang-cpp-16; do
+  rm -f "$TC/theos-root/usr/bin/$f" 2>/dev/null || true
+done
+echo "clang-16 removed: $([ -e "$TC/theos-root/usr/bin/clang-16" ] && echo no || echo yes)"
