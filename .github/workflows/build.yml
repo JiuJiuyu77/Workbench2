@@ -220,6 +220,9 @@ jobs:
       - name: 内嵌 ldid / Orion / ccache
         run: bash scripts/prepare_bundle_extras.sh BundledToolchain
 
+      - name: 从 iOS 软件源补 perl / make / dpkg / cctools / tapi
+        run: bash scripts/fetch_ios_tools.sh BundledToolchain
+
       - name: 裁剪内置工具链
         run: |
           set -euo pipefail

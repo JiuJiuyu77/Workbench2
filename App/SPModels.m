@@ -73,10 +73,11 @@ static NSString *SPOptimizationName(SPOptimization o) {
 - (void)setObfuscation:(SPObfuscation)obfuscation {
     _obfuscation = obfuscation;
     switch (obfuscation) {
+        // Arkari LLVM 23.1.1 只稳定支持 cse / cie / cfe / fla（见 OLLVMRuntime.bundle.json）
         case SPObfuscationNone:     _useOLLVM = NO; _obfuscationPasses = @[]; break;
-        case SPObfuscationLight:    _useOLLVM = YES; _obfuscationPasses = @[@"indbr", @"cse"]; break;
-        case SPObfuscationBalanced: _useOLLVM = YES; _obfuscationPasses = @[@"indbr", @"icall", @"cse"]; break;
-        case SPObfuscationStrong:   _useOLLVM = YES; _obfuscationPasses = @[@"indbr", @"icall", @"indgv", @"cse", @"fla", @"cie", @"cfe"]; break;
+        case SPObfuscationLight:    _useOLLVM = YES; _obfuscationPasses = @[@"cse"]; break;
+        case SPObfuscationBalanced: _useOLLVM = YES; _obfuscationPasses = @[@"cse", @"fla"]; break;
+        case SPObfuscationStrong:   _useOLLVM = YES; _obfuscationPasses = @[@"cse", @"cie", @"cfe", @"fla"]; break;
         case SPObfuscationCustom:   _useOLLVM = YES; break;
     }
 }

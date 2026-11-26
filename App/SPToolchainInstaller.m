@@ -200,6 +200,9 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     // 优先用 Swift 6.x 自带的 clang-21（更新的 C/C++/ObjC 前端）；
     // 没有时回落到 theos-root 的 clang-16。
     addDir([root stringByAppendingPathComponent:@"swift-toolchain/usr/bin"]);
+    // 从 iOS 软件源补进来的新版 perl / make / dpkg / cctools / tapi（存在才生效）
+    addDir([root stringByAppendingPathComponent:@"ios-tools/usr/bin"]);
+    addDir([root stringByAppendingPathComponent:@"ios-tools/usr/sbin"]);
     // 真实 clang / clang++ 所在
     addDir([root stringByAppendingPathComponent:@"usr/lib/llvm-16/bin"]);
     addDir([root stringByAppendingPathComponent:@"theos-root/usr/lib/llvm-16/bin"]);

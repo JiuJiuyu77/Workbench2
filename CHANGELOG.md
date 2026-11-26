@@ -1,3 +1,12 @@
+## 1.3.4 · Build299
+
+1. **OLLVM 升级到 Arkari LLVM 23.1.1**（原 16.0.6）：混淆强度预设改为 23.1.1 稳定支持的 `cse` / `fla` / `cie` / `cfe` 组合。
+   - 轻度 = cse、均衡 = cse+fla、强力 = cse+cie+cfe+fla。
+2. **内嵌 dylix 运行时组件**（不再运行时下载）：coretools（git/curl/jq/patch/zip…）、buildtools（cmake/ninja）、python 3.13、node 24.5、reverse（radare2/ghidra）。
+3. 新增 CI 步骤：从 iOS 软件源（Procursus）尝试抓取 perl / make / dpkg / cctools / tapi 最新版并解到 `Toolchain/ios-tools`；源不可达时自动跳过，保留包内版本。
+4. `libtool` / `ranlib` 已随 theos-root 内置（无需新增）；`ldid` 2.1.5、`ccache` 4.14.3、`Orion` 1.0.2 同前。
+5. 版本 1.3.4（299）。
+
 ## 1.3.3 · Build298
 
 1. 内嵌 **Orion 1.0.2**（theos 官方纯 Swift tweak 框架）：`Toolchain/orion/`。
