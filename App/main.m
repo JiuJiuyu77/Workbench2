@@ -186,7 +186,10 @@ extern UIViewController *TMCStorageBackup258Regression(void);
                      onLine:^(NSString *line, SPLogLevel level) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!line.length) return;
-            self.console.text = [self.console.text stringByAppendingFormat:@"%@\n", line];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (!self.console) [self loadViewIfNeeded];
+                self.console.text = [self.console.text stringByAppendingFormat:@"%@\n", line];
+            });
         });
     } onFinish:^(SPJob *job) {
         succeeded = (job.exitCode == 0);

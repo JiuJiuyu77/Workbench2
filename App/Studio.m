@@ -409,7 +409,7 @@ static NSArray *StudioSettingSections(void){return @[
  NSArray *r=[self rowAt:i];NSString *key=r[0];NSUserDefaults *u=NSUserDefaults.standardUserDefaults;
  UITableViewCell *c=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];c.textLabel.text=r[1];c.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];c.textLabel.numberOfLines=0;c.detailTextLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];c.detailTextLabel.textColor=UIColor.secondaryLabelColor;c.detailTextLabel.numberOfLines=0;c.detailTextLabel.text=r[3];c.imageView.image=[UIImage systemImageNamed:r[2]];c.accessoryType=UITableViewCellAccessoryDisclosureIndicator;c.accessibilityIdentifier=[@"settings." stringByAppendingString:key];
  if([key isEqual:@"optimization"])c.detailTextLabel.text=OptimizationName(GlobalOptimization());
- if([key isEqual:@"obfuscation"])c.detailTextLabel.text=@[@"关闭",@"轻度 · indbr+cse",@"均衡 · +icall",@"强力 · 全部 pass"][MIN(MAX([u integerForKey:@"WorkbenchObfuscation"],0),3)];
+ if([key isEqual:@"obfuscation"])c.detailTextLabel.text=WBAt(@[@"关闭",@"轻度 · cse",@"均衡 · cse+fla",@"强力 · cse+cie+cfe+fla",@"自定义"], MIN(MAX([u integerForKey:@"WorkbenchObfuscation"],0),4));
  if([key isEqual:@"theme"]){NSInteger n=[u integerForKey:@"StudioTheme"];c.detailTextLabel.text=@[@"跟随系统",@"石墨深色",@"纸感浅色"][(n>=0&&n<3)?n:0];}
  if([key isEqual:@"font"])c.detailTextLabel.text=[NSString stringWithFormat:@"%ld pt",(long)([u integerForKey:@"StudioFont"]?:14)];
  if([key isEqual:@"tabs"]){UISwitch *v=[UISwitch new];v.on=[u boolForKey:@"StudioAlwaysShowTabBar"];v.accessibilityLabel=r[1];v.accessibilityIdentifier=@"studio.alwaysShowTabBar";[v addTarget:self action:@selector(tabBarPreferenceChanged:) forControlEvents:UIControlEventValueChanged];c.accessoryView=v;c.accessoryType=UITableViewCellAccessoryNone;c.selectionStyle=UITableViewCellSelectionStyleNone;}
@@ -421,6 +421,26 @@ static NSArray *StudioSettingSections(void){return @[
   UIAlertController *sheet=[UIAlertController alertControllerWithTitle:@"混淆强度" message:@"OLLVM 编译期混淆；强度越高，编译越慢、产物越难反编译。" preferredStyle:UIAlertControllerStyleActionSheet];
   NSArray *names=@[@"关闭",@"轻度 · indbr+cse",@"均衡 · indbr+icall+cse",@"强力 · 全部 pass"];
   for(NSUInteger n=0;n<names.count;n++)[sheet addAction:[UIAlertAction actionWithTitle:names[n] style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){
+   if (n == 4) {
+       NSArray *all = @[@"cse", @"cie", @"cfe", @"fla"];
+       NSArray *saved = [NSUserDefaults.standardUserDefaults arrayForKey:@"WorkbenchObfuscationPasses"] ?: @[@"cse"];
+       UIAlertController *c = [UIAlertController alertControllerWithTitle:@"自定义混淆" message:@"按需勾选 OLLVM pass" preferredStyle:UIAlertControllerStyleActionSheet];
+       for (NSString *pass in all) {
+           BOOL on = [saved containsObject:pass];
+           [c addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"%@ %@", on ? @"✓" : @"○", pass]
+                                                 style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+               NSMutableArray *next = [saved mutableCopy];
+               if (on) [next removeObject:pass]; else [next addObject:pass];
+               [NSUserDefaults.standardUserDefaults setObject:next forKey:@"WorkbenchObfuscationPasses"];
+               [NSUserDefaults.standardUserDefaults setInteger:4 forKey:@"WorkbenchObfuscation"];
+           }]];
+       }
+       [c addAction:[UIAlertAction actionWithTitle:@"完成" style:UIAlertActionStyleCancel handler:nil]];
+       [self presentViewController:c animated:YES completion:nil];
+       [self.tableView reloadData];
+       return;
+   }
+   [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WorkbenchObfuscationPasses"];
    [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)n forKey:@"WorkbenchObfuscation"];
    [t reloadData];
   }]];
