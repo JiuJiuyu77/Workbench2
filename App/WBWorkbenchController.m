@@ -14,6 +14,8 @@
 #import "WBReverseController.h"
 #import "Runtime/Sandbox/TFAIISHHub.h"
 
+extern UIViewController *WBStudioCrashTools(void);
+
 @interface WBWorkbenchViewController : UITableViewController
 @end
 
@@ -110,7 +112,7 @@
         case 1: page = WBHealthController(); break;
         case 2: page = WBReverseController(); break;
         case 3: page = TFAIClassDumpController(); break;
-        case 4: page = TMCStorageController(); break;   // 崩溃分析仍在设置页
+        case 4: page = WBStudioCrashTools(); break;
         case 5: page = TFAIISHToolsController(nil); break;
         case 6: page = TMCStorageController(); break;
         case 7: page = WBRemoteController(); break;

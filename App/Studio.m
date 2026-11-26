@@ -1491,6 +1491,10 @@ UIViewController *TMCStudioRoot(void) {
  [projects.topViewController loadViewIfNeeded];[workbench.topViewController loadViewIfNeeded];[settings.topViewController loadViewIfNeeded];projects.tabBarItem=[[UITabBarItem alloc] initWithTitle:@"项目" image:[UIImage systemImageNamed:@"square.stack.3d.up"] tag:0];workbench.tabBarItem=[[UITabBarItem alloc] initWithTitle:@"工作台" image:[UIImage systemImageNamed:@"square.grid.2x2"] tag:1];settings.tabBarItem=[[UITabBarItem alloc] initWithTitle:@"设置" image:[UIImage systemImageNamed:@"slider.horizontal.3"] tag:2];tabs.viewControllers=@[TFAdaptiveWorkspace(projects),workbench,settings];return tabs;
 }
 UIViewController *TMCStudioHome(void){return [[StudioHome alloc] initWithStyle:UITableViewStyleGrouped];}
+
+UIViewController *WBStudioCrashTools(void) {
+    return [[StudioCrashTools alloc] initWithStyle:UITableViewStyleInsetGrouped];
+}
 #if TARGET_OS_SIMULATOR
 #include "../tests/DataSettings237.inc"
 UIViewController *TMCStudioSettingsRegression(void){StudioSettings *v=[[StudioSettings alloc]initWithStyle:UITableViewStyleInsetGrouped];
