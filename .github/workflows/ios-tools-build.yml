@@ -1,0 +1,130 @@
+name: ios-tools-build
+
+# 用 git 源码在 macos-15 上交叉编译 iOS(arm64) 版的 Theos 依赖工具。
+# 顺序：libtapi（tbd 解析，ld64 也依赖它） → GNU make → ld64。
+# 每个组件独立 continue-on-error，成功几个就发布几个；产物发布到 Release `ios-tools-latest`。
+
+on:
+  workflow_dispatch:
+    inputs:
+      make_version:
+        description: 'GNU make 版本 tag'
+        required: false
+        default: '4.4.1'
+      ld64_ref:
+        description: 'ld64 分支/tag（git）'
+        required: false
+        default: 'main'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 准备
+        run: |
+          set -euo pipefail
+          mkdir -p out/usr/bin out/usr/lib
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          echo "SDK=$SDK" >> "$GITHUB_ENV"
+          echo "IOSCC=$(xcrun --sdk iphoneos -f clang)" >> "$GITHUB_ENV"
+          echo "IOSCXX=$(xcrun --sdk iphoneos -f clang++)" >> "$GITHUB_ENV"
+          echo "IOSFLAGS=-arch arm64 -isysroot $SDK -miphoneos-version-min=15.0 -O2 -Wno-error" >> "$GITHUB_ENV"
+
+      # ---------------- libtapi（最高优先） ----------------
+      - name: libtapi（tpoechtrager/apple-libtapi）
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/tpoechtrager/apple-libtapi.git tapi || true
+          cd tapi
+          git log --oneline -1 || true
+          chmod +x build.sh 2>/dev/null || true
+          # 该仓库自带 build.sh（内部用 cmake + ninja），用 iOS 工具链覆盖编译器
+          CC="$IOSCC" CXX="$IOSCXX" CFLAGS="$IOSFLAGS" CXXFLAGS="$IOSFLAGS" \
+            ./build.sh --prefix="$PWD/../out" 2>&1 | tail -40 || echo "::warning::libtapi build.sh 失败，尝试 cmake 直接构建"
+          if [ ! -f ../out/lib/libtapi.dylib ] && [ ! -f ../out/usr/lib/libtapi.dylib ]; then
+            cmake -S src/llvm-project/tapi -B /tmp/tapibuild -G Ninja \
+              -DCMAKE_C_COMPILER="$IOSCC" -DCMAKE_CXX_COMPILER="$IOSCXX" \
+              -DCMAKE_C_FLAGS="$IOSFLAGS" -DCMAKE_CXX_FLAGS="$IOSFLAGS" \
+              -DCMAKE_INSTALL_PREFIX="$PWD/../out" -DLLVM_ENABLE_PROJECTS=tapi \
+              -DTAPI_INCLUDE_TESTS=OFF -DTAPI_INCLUDE_DOCS=OFF 2>&1 | tail -10 || true
+            cmake --build /tmp/tapibuild -j8 2>&1 | tail -20 || true
+            cmake --install /tmp/tapibuild 2>&1 | tail -10 || true
+          fi
+          find ../out -name 'libtapi*' | head -10 || true
+
+      # ---------------- GNU make ----------------
+      - name: GNU make（mirror/make）
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          V="${{ inputs.make_version }}"
+          git clone --depth 1 --branch "$V" https://github.com/mirror/make.git makesrc || {
+            curl -L -o make.tar.gz "https://ftp.gnu.org/gnu/make/make-${V}.tar.gz"
+            mkdir -p makesrc && tar xzf make.tar.gz -C makesrc --strip-components=1
+          }
+          cd makesrc
+          # iOS SDK 里 uintmax_t 与 configure 探测冲突，直接给定类型
+          ac_cv_type_uintmax_t=yes ac_cv_type_intmax_t=yes ac_cv_type_long_long_int=yes \
+          ./configure --host=arm64-apple-darwin --disable-nls --without-guile \
+            CC="$IOSCC" CFLAGS="$IOSFLAGS -D__arm64__" LDFLAGS="-arch arm64 -isysroot $SDK" \
+            2>&1 | tail -12 || { echo "::warning::make configure 失败"; exit 0; }
+          make -j8 2>&1 | tail -25 || { echo "::warning::make 构建失败"; exit 0; }
+          if [ -x src/make ]; then
+            cp src/make ../out/usr/bin/make && chmod +x ../out/usr/bin/make
+            file ../out/usr/bin/make
+          fi
+
+      # ---------------- ld64（git） ----------------
+      - name: ld64（apple-oss-distributions/ld64, git）
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          REF="${{ inputs.ld64_ref }}"
+          git clone --depth 1 --branch "$REF" https://github.com/apple-oss-distributions/ld64.git ld64src || \
+            git clone --depth 1 https://github.com/apple-oss-distributions/ld64.git ld64src
+          cd ld64src
+          git log --oneline -1
+          xcodebuild -project ld64.xcodeproj -list 2>&1 | head -15 || true
+          # 有 libtapi 时把它接进来（textstub_dylib_file.cpp 依赖 tapi 头与库）
+          TAPI_FLAGS=""
+          if [ -d "$PWD/../out/include/tapi" ]; then
+            TAPI_FLAGS="HEADER_SEARCH_PATHS=$PWD/../out/include LIBRARY_SEARCH_PATHS=$PWD/../out/lib OTHER_LDFLAGS=-ltapi"
+          fi
+          for T in ld ld64; do
+            echo "== target $T"
+            xcodebuild -project ld64.xcodeproj -target "$T" \
+              -configuration Release -sdk iphoneos ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+              IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+              GCC_TREAT_WARNINGS_AS_ERRORS=NO $TAPI_FLAGS \
+              CONFIGURATION_BUILD_DIR="$PWD/out" build 2>&1 | tail -15 || true
+          done
+          BIN="$(find . -name ld64 -type f -perm -u+x | head -1)"
+          if [ -z "$BIN" ]; then echo "::warning::ld64 未编出"; exit 0; fi
+          cp "$BIN" ../out/usr/bin/ld64 && chmod +x ../out/usr/bin/ld64
+          file ../out/usr/bin/ld64
+
+      - name: 打包 + 发布
+        id: pack
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          find out -type f | head -20 || true
+          if [ -z "$(ls -A out/usr/bin)"] && [ -z "$(ls -A out/usr/lib)"]; then
+            echo "::warning::没有任何产物"; exit 0
+          fi
+          tar czf ios-tools.tar.gz -C out usr
+          ls -lh ios-tools.tar.gz
+          shasum -a 256 ios-tools.tar.gz | tee ios-tools.sha256
+          TAG="ios-tools-latest"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --prerelease \
+            --title "自编 Theos 工具（iOS arm64）" \
+            --notes "libtapi / GNU make / ld64 的 arm64-apple-ios 构建；由 .github/workflows/ios-tools-build.yml 生成。"
+          gh release upload "$TAG" ios-tools.tar.gz ios-tools.sha256 --clobber
