@@ -1,3 +1,8 @@
+## 1.4.1 · Build306
+
+1. 修复「远程工作台」闪退：`titleForHeaderInSection` 用 3 元素数组取第 4 个章节标题（`NSRangeException: index 3 beyond bounds [0..2]`），已补齐标题并加越界保护。
+2. 版本 1.4.1（306）。
+
 ## 1.4.0 · Build305
 
 1. 修复链接器缺失：Swift 6.4.3 裁剪时误删了 `ld64.lld`/`ld.lld`，导致 `bin-lld/ld64` shim 指向空文件；现改为保留 lld，并在缺失时自动回落到 theos-root 的 ld64。

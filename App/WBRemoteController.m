@@ -41,7 +41,8 @@
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return @[@"局域网工作台", @"SSH 远程构建", @"说明"][section];
+    NSArray *titles = @[@"局域网工作台", @"SSH 远程构建", @"GitHub Actions 云端构建", @"说明"];
+    return section < (NSInteger)titles.count ? titles[section] : nil;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {

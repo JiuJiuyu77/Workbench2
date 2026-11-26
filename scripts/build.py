@@ -180,7 +180,7 @@ info = {
     'CFBundleExecutable': 'Workbench', 'CFBundleIdentifier': args.bundle_id,
     'CFBundleName': 'Workbench', 'CFBundleDisplayName': 'Workbench',
     'CFBundleDevelopmentRegion': 'zh-Hans', 'CFBundleLocalizations': ['zh-Hans', 'en'],
-    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.4.0', 'CFBundleVersion': '305', 'WorkbenchEdition': 'opensource',
+    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.4.1', 'CFBundleVersion': '306', 'WorkbenchEdition': 'opensource',
     'CFBundleDocumentTypes': [{'CFBundleTypeName':'Workbench Files','CFBundleTypeRole':'Editor','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','public.archive','public.source-code']}],
     'CFBundleURLTypes': [{'CFBundleURLName':'Workbench Incoming','CFBundleURLSchemes':['workbench', 'workbench']}],
     'BGTaskSchedulerPermittedIdentifiers': ['com.HuQing.Workbench.ai.processing'],
