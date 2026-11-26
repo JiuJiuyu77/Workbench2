@@ -1,3 +1,10 @@
+## 1.4.0 · Build305
+
+1. 修复链接器缺失：Swift 6.4.3 裁剪时误删了 `ld64.lld`/`ld.lld`，导致 `bin-lld/ld64` shim 指向空文件；现改为保留 lld，并在缺失时自动回落到 theos-root 的 ld64。
+2. 修复 Logos 生成器缺失：`theos-full/bin/logos.pl` 被上游 makefiles 刷新覆盖时丢失，现从 theos-root 自动补回。
+3. 自检「链接器 lld」改为检查真正使用的 `bin-lld/ld64`。
+4. 版本 1.4.0（305）。
+
 ## 1.3.9 · Build304
 
 1. 修复 TrollStore 安装失败（`ldid: Unsupported Mach-O type`）：打包前清理 Toolchain 里不可签名的 Mach-O —— `MH_OBJECT`（.o）、`MH_DSYM`、`*.dSYM`、`*.d` 等构建中间产物；只保留 `MH_EXECUTE` / `MH_DYLIB` / `MH_BUNDLE`。

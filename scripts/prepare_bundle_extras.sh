@@ -70,6 +70,12 @@ fi
 # 链接器：clang 23 配 Apple ld64-951.9 太旧，改用 Swift 6.4.3 自带的 ld64.lld（LLVM 21）
 # shim 负责过滤 Apple ld64 专有参数（-adhoc_codesign 由 ldid 补签）
 # ---------------------------------------------------------------------------
+if [ ! -x "$TC/swift-toolchain/usr/bin/ld64.lld" ] && [ -x "$TC/theos-root/usr/bin/ld64" ]; then
+  echo "  warn: swift 工具链缺 ld64.lld，回落 theos-root/usr/bin/ld64"
+  mkdir -p "$TC/bin-lld"
+  for name in ld ld64; do ln -sf ../theos-root/usr/bin/ld64 "$TC/bin-lld/$name"; done
+fi
+
 if [ -x "$TC/swift-toolchain/usr/bin/ld64.lld" ]; then
   mkdir -p "$TC/bin-lld"
   for name in ld ld64; do
@@ -89,6 +95,14 @@ SHIM
     chmod +x "$TC/bin-lld/$name"
   done
   echo "  ld64.lld: $("$TC/swift-toolchain/usr/bin/ld64.lld" --version 2>&1 | head -1)"
+fi
+
+# Logos 生成器兜底（theos-full/bin 被上游刷新覆盖时可能丢失）
+if [ ! -f "$TC/theos-full/bin/logos.pl" ]; then
+  for src in "$TC/theos-root/theos/bin/logos.pl" "$TC/theos-root/usr/share/theos/bin/logos.pl"; do
+    [ -f "$src" ] || continue
+    mkdir -p "$TC/theos-full/bin" && cp "$src" "$TC/theos-full/bin/logos.pl" && echo "  logos.pl <- $src" && break
+  done
 fi
 
 # ---------------------------------------------------------------------------

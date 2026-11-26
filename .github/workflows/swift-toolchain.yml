@@ -50,7 +50,7 @@ jobs:
 
           # 去掉 SwiftPM / 调试 / 语言服务器等构建用不到的可执行文件
           BIN="$SRC/bin"
-          rm -f "$BIN"/{swift-package,sourcekit-lsp,clangd,lldb,lldb-server,lldb-dap,lldb-mcp,docc,clang-cache,clang-cl,clang-cpp,lld,lld-link,ld.lld,dsymutil,llvm-cov,llvm-objdump,llvm-nm,llvm-objcopy,llvm-ranlib,llvm-strip,llvm-size,llvm-readobj,llvm-profdata,wasmkit,llvm-symbolizer,swift-ide-test,swift-api-digester,swift-api-dump.py,swift-symbolgraph-extract,swift-format,swift-format-legacy,swift-sdk,swift-experimental-sdk,swift-build,swift-test,swift-run,swift-frontend-legacy} 2>/dev/null || true
+          rm -f "$BIN"/{swift-package,sourcekit-lsp,clangd,lldb,lldb-server,lldb-dap,lldb-mcp,docc,clang-cache,clang-cl,clang-cpp,lld-link,dsymutil,llvm-cov,llvm-objdump,llvm-nm,llvm-objcopy,llvm-ranlib,llvm-strip,llvm-size,llvm-readobj,llvm-profdata,wasmkit,llvm-symbolizer,swift-ide-test,swift-api-digester,swift-api-dump.py,swift-symbolgraph-extract,swift-format,swift-format-legacy,swift-sdk,swift-experimental-sdk,swift-build,swift-test,swift-run,swift-frontend-legacy} 2>/dev/null || true
           rm -f "$BIN"/swift-api-* 2>/dev/null || true
 
           # 压成单架构 arm64

@@ -151,7 +151,7 @@ static BOOL WBFileExists(NSString *p) {
         @[@"r2", @"reverse/bin/r2", @"radare2"],
         @[@"mtmacho", @"reverse/bin/mt-macho", @"mt-macho"],
         @[@"swiftc", @"swift-toolchain/usr/bin/swiftc", @"Swift 编译器"],
-        @[@"ld64lld", @"swift-toolchain/usr/bin/ld64.lld", @"lld 链接器"],
+        @[@"ld64lld", @"bin-lld/ld64", @"链接器 lld"],
     ];
     for (NSArray *row in toolchainChecks) {
         NSString *path = [tc stringByAppendingPathComponent:row[1]];
