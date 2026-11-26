@@ -128,3 +128,10 @@ static inline NSError *SPError(SPErrorCode code, NSString *msg) {
 }
 
 NS_ASSUME_NONNULL_END
+
+/// 数组越界安全取值：索引非法或越界时返回 nil（避免 NSRangeException 闪退）。
+static inline id WBAt(NSArray *array, NSInteger index) {
+    if (![array isKindOfClass:NSArray.class]) return nil;
+    if (index < 0 || index >= (NSInteger)array.count) return nil;
+    return array[(NSUInteger)index];
+}

@@ -1,3 +1,8 @@
+## 1.4.2 · Build307
+
+1. 全局数组越界保护：新增 `WBAt(array, index)`，把 Studio 构建设置、远程设置、FLEX 信息页、镜像页共 8 处「数组字面量直接下标」改为安全取值（此前会抛 NSRangeException 直接闪退，与远程工作台同一类崩溃）。
+2. 版本 1.4.2（307）。
+
 ## 1.4.1 · Build306
 
 1. 修复「远程工作台」闪退：`titleForHeaderInSection` 用 3 元素数组取第 4 个章节标题（`NSRangeException: index 3 beyond bounds [0..2]`），已补齐标题并加越界保护。
