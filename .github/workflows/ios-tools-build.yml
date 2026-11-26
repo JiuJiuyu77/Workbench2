@@ -55,7 +55,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          git clone --depth 1 https://github.com/tpoechtrager/apple-libtapi.git tapi
+          git clone --depth 1 --recursive --shallow-submodules https://github.com/tpoechtrager/apple-libtapi.git tapi
           cd tapi && git log --oneline -1 && ls src/llvm-project | head
 
       - name: libtapi 宿主 tblgen（macOS）
