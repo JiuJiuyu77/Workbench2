@@ -199,6 +199,8 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     NSString *root = self.installRoot;
     // 优先用 Swift 6.x 自带的 clang-21（更新的 C/C++/ObjC 前端）；
     // 没有时回落到 theos-root 的 clang-16。
+    // Arkari LLVM 23.1.1 的 clang：不传 -irobf 时就是普通 clang 23（最新）
+    addDir([root stringByAppendingPathComponent:@"ollvm/bin"]);
     addDir([root stringByAppendingPathComponent:@"swift-toolchain/usr/bin"]);
     // 从 iOS 软件源补进来的新版 perl / make / dpkg / cctools / tapi（存在才生效）
     addDir([root stringByAppendingPathComponent:@"ios-tools/usr/bin"]);

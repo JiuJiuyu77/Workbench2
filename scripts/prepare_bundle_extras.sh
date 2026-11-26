@@ -57,9 +57,7 @@ embed_component() {
 }
 
 embed_component coretools  "$RT/runtime-core-tools-a7e97567217a/CoreToolsRuntime.tar.gz"
-embed_component buildtools "$RT/runtime-build-tools-3.27.9-fb0f29cea7b2/BuildToolsRuntime.tar.gz"
-embed_component python     "$RT/runtime-python-3.13.14-3c834a2c8964/PythonRuntime.tar.gz"
-embed_component node       "$RT/runtime-node-24.5.0-e3a6c25fac33/NodeRuntime.tar.gz"
+# buildtools(cmake/ninja) / python / node 与设备端编译无关，不内嵌
 embed_component reverse    "$RT/runtime-reverse-tools-9d3ca9ea3340/ReverseToolsRuntime.tar.gz"
 embed_component ollvm      "$RT/runtime-ollvm-23.1.1-e54f2878240e/OLLVMRuntime.tar.gz"
 

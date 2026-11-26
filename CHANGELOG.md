@@ -1,3 +1,9 @@
+## 1.3.5 · Build300
+
+1. 默认编译前端改用 **Arkari LLVM 23.1.1 的 clang**（不传 `-irobf` 时即普通 clang 23），比 clang-21 / clang-16 新；混淆开启时才追加 pass 参数。
+2. 精简内嵌：只保留编译与逆向需要的 dylix 组件 —— **coretools**（git/curl/zip/unzip/patch/file/diff/rg/jq）、**ollvm 23.1.1**、**reverse**；不再内嵌 buildtools(cmake/ninja)、python、node（与设备端编译无关）。
+3. 版本 1.3.5（300）。
+
 ## 1.3.4 · Build299
 
 1. **OLLVM 升级到 Arkari LLVM 23.1.1**（原 16.0.6）：混淆强度预设改为 23.1.1 稳定支持的 `cse` / `fla` / `cie` / `cfe` 组合。
