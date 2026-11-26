@@ -36,30 +36,28 @@ jobs:
           echo "SDK=$SDK" >> "$GITHUB_ENV"
           echo "CC_IOS=$(xcrun --sdk iphoneos -f clang)" >> "$GITHUB_ENV"
 
-      - name: 编译 ld64
+      - name: 编译 ld64（xcodebuild，iOS arm64）
         id: ld64
         continue-on-error: true
         run: |
           set -euo pipefail
           TAG="${{ inputs.ld64_tag }}"
           curl -L --retry 3 -o ld64.tar.gz "https://github.com/apple-oss-distributions/ld64/archive/refs/tags/${TAG}.tar.gz"
-          mkdir -p ld64src && tar xzf ld64.tar.gz -C ld64src --strip-components=1
+          rm -rf ld64src && mkdir -p ld64src
+          tar xzf ld64.tar.gz -C ld64src --strip-components=1
           cd ld64src
-          chmod +x configure
-          # ld64 自带的 configure 支持 --target；用 iOS 交叉编译
-          ./configure --target=arm64-apple-ios15.0 \
-            CC="$(xcrun --sdk iphoneos -f clang)" \
-            CXX="$(xcrun --sdk iphoneos -f clang++)" \
-            CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=15.0 -O2 -Wno-error" \
-            CXXFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=15.0 -O2 -Wno-error" \
-            LDFLAGS="-arch arm64 -isysroot $SDK" 2>&1 | tail -20 || { echo "::warning::configure 失败"; exit 0; }
-          make -j8 2>&1 | tail -30 || { echo "::warning::make 失败"; exit 0; }
+          ls
+          # ld64 只用 Xcode 工程构建
+          xcodebuild -project ld64.xcodeproj -target ld64 \
+            -configuration Release -sdk iphoneos ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CONFIGURATION_BUILD_DIR="$PWD/out" build 2>&1 | tail -30 || true
           BIN="$(find . -name ld64 -type f -perm -u+x | head -1)"
-          [ -n "$BIN" ] || { echo "::warning::未找到 ld64 产物"; exit 0; }
+          if [ -z "$BIN" ]; then echo "::warning::未找到 ld64 产物"; exit 0; fi
           cp "$BIN" ../out/usr/bin/ld64
           chmod +x ../out/usr/bin/ld64
           echo "built=1" >> "$GITHUB_OUTPUT"
-          ../out/usr/bin/ld64 -v 2>&1 | head -2 || true
+          file ../out/usr/bin/ld64 || true
 
       - name: 编译 GNU make
         id: make
