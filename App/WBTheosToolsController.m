@@ -7,6 +7,7 @@
 #import "SPToolchainInstaller.h"
 #import "SPToolchainDownloader.h"
 #import "SPCompat.h"
+#import "SPSession.h"
 #import "GlassSupport.h"
 
 @interface WBTheosToolsListController : UITableViewController
@@ -17,37 +18,31 @@
 
 #pragma mark - 版本
 
-static NSString *WBRunVersion(NSString *path, NSArray<NSString *> *args) {
-    if (![NSFileManager.defaultManager isExecutableFileAtPath:path]) return nil;
-    NSTask *task = [NSTask new];
-    task.launchPath = path;
-    task.arguments = args;
-    NSPipe *pipe = [NSPipe pipe];
-    task.standardOutput = pipe;
-    task.standardError = pipe;
-    @try { [task launch]; [task waitUntilExit]; } @catch (__unused NSException *e) { return nil; }
-    NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
-    NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    return [text componentsSeparatedByString:@"\n"].firstObject;
+// iOS 没有 NSTask，统一走 SPSession 的子进程（与构建同一套工具链环境）。
+static NSString *WBVersionOf(NSString *command) {
+    SPCommandResult *result = [SPSession runSyncShell:command
+                                          environment:[[SPToolchainInstaller shared] runtimeEnvironment]
+                                                  cwd:NSTemporaryDirectory()
+                                              timeout:20];
+    NSString *text = [NSString stringWithFormat:@"%@%@", result.stdoutText ?: @"", result.stderrText ?: @""];
+    for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
+        NSString *trimmed = [line stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (trimmed.length) return trimmed;
+    }
+    return @"未安装";
 }
 
 static NSArray<NSArray<NSString *> *> *WBInstalledVersions(void) {
-    NSString *root = [SPToolchainInstaller shared].installRoot ?: [NSBundle.mainBundle bundlePath];
-    NSMutableArray *rows = [NSMutableArray array];
-    void (^add)(NSString *, NSString *, NSArray<NSString *> *) = ^(NSString *title, NSString *rel, NSArray<NSString *> *args) {
-        NSString *path = [root stringByAppendingPathComponent:rel];
-        NSString *version = WBRunVersion(path, args) ?: @"未安装";
-        [rows addObject:@[title, version]];
-    };
-    add(@"clang", @"ollvm/bin/clang", @[@"--version"]);
-    add(@"ld64", @"bin-lld/ld64", @[@"--version"]);
-    add(@"ldid", @"theos-root/usr/bin/ldid", @[@"-v"]);
-    add(@"make", @"theos-root/usr/bin/make", @[@"--version"]);
-    add(@"perl", @"theos-root/usr/bin/perl", @[@"-e", @"printf \"%vd\\n\", $^V"]);
-    add(@"swiftc", @"swift-toolchain/usr/bin/swiftc", @[@"--version"]);
-    add(@"r2", @"reverse/bin/r2", @[@"-v"]);
-    add(@"ld64.lld", @"swift-toolchain/usr/bin/ld64.lld", @[@"--version"]);
-    return rows;
+    return @[
+        @[@"clang", WBVersionOf(@"clang --version")],
+        @[@"ld64", WBVersionOf(@"ld64 --version")],
+        @[@"ld64.lld", WBVersionOf(@"ld64.lld --version")],
+        @[@"ldid", WBVersionOf(@"ldid -v")],
+        @[@"make", WBVersionOf(@"make --version")],
+        @[@"perl", WBVersionOf(@"perl -e 'printf \"%vd\\n\", $^V'")],
+        @[@"swiftc", WBVersionOf(@"swiftc --version")],
+        @[@"r2", WBVersionOf(@"r2 -v")],
+    ];
 }
 
 @implementation WBTheosToolsListController
