@@ -424,7 +424,29 @@ if (_bundled_tc.is_dir() and any(_bundled_tc.iterdir()) and not args.simulator):
         list(pool.map(_sign_one, _machos))
     print('Bundled toolchain Mach-O signed: %d in %.1fs' % (len(_machos), time.time() - _sign_started))
 subprocess.run(['codesign','--force','--sign',args.identity,*main_sign_flags,str(app)],check=True)
+def _normalize_mtimes(base):
+    """zip 不支持 1980 之前的时间戳；内置运行时有 epoch 0 的文件，统一改成当前时间。"""
+    import time as _time
+    floor = 315532800  # 1980-01-01
+    now = _time.time()
+    fixed = 0
+    for path in base.rglob('*'):
+        try:
+            st = path.lstat()
+        except OSError:
+            continue
+        if st.st_mtime < floor:
+            try:
+                os.utime(path, (now, now), follow_symlinks=False)
+                fixed += 1
+            except OSError:
+                pass
+    if fixed:
+        print('mtime normalized: %d' % fixed)
+
+
 if not args.simulator:
+    _normalize_mtimes(app)
     package_kind = 'signed' if profile_rights else 'unsigned'
     ipa = ROOT / 'build' / f"Workbench-{info['CFBundleShortVersionString']}-build{info['CFBundleVersion']}-opensource-{package_kind}.ipa"
     with zipfile.ZipFile(ipa, 'w', zipfile.ZIP_DEFLATED) as out:
