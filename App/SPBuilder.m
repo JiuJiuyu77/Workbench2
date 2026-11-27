@@ -426,6 +426,7 @@ static NSString *SPCopyIntoPackages(NSString *source, NSString *packages, NSStri
     }
 
     // dylib：以前只有开关、没有实现，这里真正导出（按 outputPattern-dylib 命名）
+    NSUInteger exportedDylibs = 0;
     if ([opts[@"exportDylib"] boolValue]) {
         NSMutableArray<NSString *> *dylibs = [NSMutableArray array];
         SPCollectPaths(staging, @".dylib", dylibs, 0);
@@ -446,10 +447,14 @@ static NSString *SPCopyIntoPackages(NSString *source, NSString *packages, NSStri
             }
             [used addObject:unique.lowercaseString];
             NSString *copied = SPCopyIntoPackages(dylib, packages, unique);
-            if (copied) [names addObject:copied];
+            if (copied) { [names addObject:copied]; exportedDylibs++; }
         }
     }
 
+    if ((wantApp || wantIpa) && !apps.count)
+        SPLog(@"[!] 没有找到 .app（只有应用型工程才有），app/ipa 未生成");
+    if ([opts[@"exportDylib"] boolValue] && exportedDylibs == 0)
+        SPLog(@"[!] 没有找到可导出的 dylib");
     if (names.count) SPLog(@"额外产物：%@", [names componentsJoinedByString:@", "]);
     return names;
 }
