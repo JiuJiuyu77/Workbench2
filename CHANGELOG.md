@@ -1,3 +1,8 @@
+## 1.4.7 · Build312
+
+1. 修 TrollStore 安装失败 `ldid.cpp(529) _assert(): stream.sputn(...) == writ`：包内 Toolchain 里 579 个 Mach-O 之前被打了 ad-hoc 签名，TrollStore 用 ldid 重签时写不进去；改为打包时 `codesign --remove-signature` 去掉旧签名，交由 TrollStore 统一签。
+2. 版本 1.4.7（312）。
+
 ## 1.4.6 · Build311
 
 1. 混淆强度细化：新增「自定义」档，可逐项勾选 OLLVM pass（cse / cie / cfe / fla），选择持久化到 `WorkbenchObfuscationPasses`，构建时按勾选生成 `-irobf` 参数。

@@ -180,7 +180,7 @@ info = {
     'CFBundleExecutable': 'Workbench', 'CFBundleIdentifier': args.bundle_id,
     'CFBundleName': 'Workbench', 'CFBundleDisplayName': 'Workbench',
     'CFBundleDevelopmentRegion': 'zh-Hans', 'CFBundleLocalizations': ['zh-Hans', 'en'],
-    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.4.6', 'CFBundleVersion': '311', 'WorkbenchEdition': 'opensource',
+    'NSCameraUsageDescription': '拍摄照片用于项目文件、截图记录与问题反馈。', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.4.7', 'CFBundleVersion': '312', 'WorkbenchEdition': 'opensource',
     'CFBundleDocumentTypes': [{'CFBundleTypeName':'Workbench Files','CFBundleTypeRole':'Editor','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','public.archive','public.source-code']}],
     'CFBundleURLTypes': [{'CFBundleURLName':'Workbench Incoming','CFBundleURLSchemes':['workbench', 'workbench']}],
     'BGTaskSchedulerPermittedIdentifiers': ['com.HuQing.Workbench.ai.processing'],
@@ -468,11 +468,14 @@ if (_bundled_tc.is_dir() and any(_bundled_tc.iterdir()) and not args.simulator):
     _machos = [p for p in (app / 'Toolchain').rglob('*')
                if p.is_file() and not p.is_symlink() and _macho(p)]
     def _sign_one(path):
-        subprocess.run(['codesign', '--force', '--sign', args.identity, str(path)],
+        # 去掉构建机上打的 ad-hoc 签名：TrollStore 用 ldid 重新签名时，
+        # 已有签名会占用 LC_CODE_SIGNATURE 的残余空间，导致
+        # ldid.cpp(529) stream.sputn 断言失败（安装直接失败）。
+        subprocess.run(['codesign', '--remove-signature', str(path)],
                        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(_sign_one, _machos))
-    print('Bundled toolchain Mach-O signed: %d in %.1fs' % (len(_machos), time.time() - _sign_started))
+    print('Bundled toolchain Mach-O unsigned: %d in %.1fs' % (len(_machos), time.time() - _sign_started))
 subprocess.run(['codesign','--force','--sign',args.identity,*main_sign_flags,str(app)],check=True)
 def _normalize_mtimes(base):
     """zip 不支持 1980 之前的时间戳；内置运行时有 epoch 0 的文件，统一改成当前时间。"""
