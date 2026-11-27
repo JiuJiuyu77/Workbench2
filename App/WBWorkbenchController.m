@@ -25,12 +25,26 @@ extern UIViewController *TFAIClassDumpController(void);
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"工作台";
-    self.tableView.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    self.tableView.rowHeight = 62;
+    // dylix 卡片列表：去分隔线、行高自适应。
+    TMCCardTableStyle(self.tableView);
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(jitStatusChanged:)
+                                                 name:@"SPJITStatusChanged"
+                                               object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)jitStatusChanged:(NSNotification *)note {
+    [self.tableView reloadData];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    // JIT 首次进入时后台探测（probe 内部已切后台队列，不会卡主线程）。
+    if (![SPJIT shared].lastProbe) [[SPJIT shared] probe];
     [self.tableView reloadData];
 }
 
@@ -50,54 +64,43 @@ extern UIViewController *TFAIClassDumpController(void);
 
 - (NSString *)obfuscationName {
     NSInteger value = [NSUserDefaults.standardUserDefaults integerForKey:@"WorkbenchObfuscation"];
-    NSArray *names = @[@"关闭", @"轻度 · indbr+cse", @"均衡 · +icall", @"强力 · 全部 pass"];
-    return names[(NSUInteger)MIN(MAX(value, 0), 3)];
+    NSArray *names = @[@"关闭", @"轻度 · indbr+cse", @"均衡 · +icall", @"强力 · 全部 pass", @"自定义 pass"];
+    return names[(NSUInteger)MIN(MAX(value, 0), 4)];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *identifier = @"WBWorkbenchCell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:identifier];
+    static NSString *identifier = @"WBWorkbenchCard";
+    TMCCardCell *cell = [TMCCardCell cellInTable:tableView reuseIdentifier:identifier];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    cell.accessoryType = UITableViewCellAccessoryNone;
     cell.accessoryView = nil;
-    cell.textLabel.textColor = UIColor.labelColor;
-    cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-    cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
-    cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
 
     if (indexPath.section == 0) {
         SPToolchainInstaller *installer = [SPToolchainInstaller shared];
         if (indexPath.row == 0) {
-            cell.textLabel.text = @"工具链";
-            cell.detailTextLabel.text = installer.isInstalled
-                ? [NSString stringWithFormat:@"Theos 就绪 · %@", installer.theosPath.lastPathComponent ?: @""]
-                : @"未就绪 · 到「设置 → 工具链」安装";
-            cell.imageView.image = [UIImage systemImageNamed:@"wrench.and.screwdriver.fill"];
-            cell.imageView.tintColor = installer.isInstalled ? UIColor.systemGreenColor : UIColor.systemOrangeColor;
+            [cell configureWithTitle:@"工具链"
+                              detail:(installer.isInstalled
+                                      ? [NSString stringWithFormat:@"Theos 就绪 · %@", installer.theosPath.lastPathComponent ?: @""]
+                                      : @"未就绪 · 到「设置 → 工具链」安装")
+                              symbol:@"wrench.and.screwdriver.fill"
+                                tint:(installer.isInstalled ? UIColor.systemGreenColor : UIColor.systemOrangeColor)];
         } else if (indexPath.row == 1) {
-            cell.textLabel.text = @"混淆强度";
-            cell.detailTextLabel.text = self.obfuscationName;
-            cell.imageView.image = [UIImage systemImageNamed:@"shield.lefthalf.filled"];
-            cell.imageView.tintColor = UIColor.systemIndigoColor;
+            [cell configureWithTitle:@"混淆强度" detail:self.obfuscationName
+                              symbol:@"shield.lefthalf.filled" tint:UIColor.systemIndigoColor];
         } else {
-            cell.textLabel.text = @"JIT 可执行内存";
-            cell.detailTextLabel.text = [SPJIT shared].statusText;
-            cell.imageView.image = [UIImage systemImageNamed:@"bolt.fill"];
-            cell.imageView.tintColor = [SPJIT shared].isEnabled ? UIColor.systemGreenColor : UIColor.systemOrangeColor;
+            [cell configureWithTitle:@"JIT 可执行内存" detail:[SPJIT shared].statusText
+                              symbol:@"bolt.fill"
+                                tint:([SPJIT shared].isEnabled ? UIColor.systemGreenColor : UIColor.systemOrangeColor)];
         }
         return cell;
     }
 
     NSArray *titles = @[@"快速构建测试", @"环境自检", @"逆向工作台", @"IPA 头文件导出", @"崩溃分析"];
-    NSArray *details = @[@"编译内置样例 tweak，验证工具链", @"工具链 / 运行时 / 运行环境 / 磁盘", @"分析架构、符号、注入 dylib", @"从 ipa 导出头文件并分享", @"导入 .ips 与符号档案", @"按需安装 Linux 工具与 SDK", @"查看占用并清理缓存", @"SSH 远程构建与局域网工作台"];
+    NSArray *details = @[@"编译内置样例 tweak，验证工具链", @"工具链 / 运行时 / 运行环境 / 磁盘", @"分析架构、符号、注入 dylib", @"从 ipa 导出头文件并分享", @"导入 .ips 与符号档案"];
     NSArray *icons = @[@"hammer.fill", @"checkmark.seal.fill", @"binoculars.fill", @"doc.text.magnifyingglass", @"waveform.path.ecg"];
-    cell.textLabel.text = titles[indexPath.row];
-    cell.detailTextLabel.text = details[indexPath.row];
-    cell.imageView.image = [UIImage systemImageNamed:icons[indexPath.row]];
-    cell.imageView.tintColor = UIColor.systemBlueColor;
+    if (indexPath.row >= (NSInteger)titles.count) return cell;
+    [cell configureWithTitle:titles[indexPath.row] detail:details[indexPath.row]
+                      symbol:icons[indexPath.row] tint:UIColor.systemBlueColor];
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     return cell;
 }
 

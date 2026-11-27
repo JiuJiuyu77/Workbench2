@@ -40,7 +40,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// 启动时调用：异步拉起 helper 并探测
 - (void)startServiceIfNeeded;
 
-/// 主动探测（会实际申请一小块可执行内存再释放）
+/// 主动探测（会实际申请一小块可执行内存再释放）。
+/// 任意线程可调用：内部固定切到后台串行队列，完成后在主线程发 SPJITStatusChanged。
 - (void)probe;
 
 /// 真实执行验证：申请一页、写入 arm64 的 `ret` 指令、清 icache、真的跳进去调用一次。

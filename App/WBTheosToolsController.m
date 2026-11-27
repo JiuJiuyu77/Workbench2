@@ -13,13 +13,41 @@
 @interface WBTheosToolsListController : UITableViewController
 @property (nonatomic, strong) NSArray<SPComponentInfo *> *items;
 @property (nonatomic, assign) BOOL busy;
+- (void)reload;
+- (void)refreshAll;
+- (void)refreshVersions;
 @end
 
 
 #pragma mark - 版本
 
 // iOS 没有 NSTask，统一走 SPSession 的子进程（与构建同一套工具链环境）。
-static NSString *WBVersionOf(NSString *command) {
+//
+// **必须后台执行**：SPSession 的 runSyncShell 会同步等待子进程结束，
+// 主线程调用会被直接拒绝（stderr「内部错误：同步 Shell 不能在主线程调用」），
+// 表现就是「当前版本全部显示内部错误」，而且界面会卡住。
+// 这里改成：后台队列探测一次 → 结果缓存 → 主线程只读缓存并刷新。
+static NSArray<NSString *> *WBVersionTools(void) {
+    return @[@"clang", @"ld64", @"ld64.lld", @"ldid", @"make", @"perl", @"swiftc", @"r2"];
+}
+
+static NSArray<NSString *> *WBVersionCommands(void) {
+    return @[@"clang --version", @"ld64 --version", @"ld64.lld --version", @"ldid -v",
+             @"make --version", @"perl -e 'printf \"%vd\\n\", $^V'",
+             @"swiftc --version", @"r2 -v"];
+}
+
+static NSMutableDictionary<NSString *, NSString *> *WBVersionCache(void) {
+    static NSMutableDictionary *cache;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ cache = [NSMutableDictionary dictionary]; });
+    return cache;
+}
+
+/// 只在主线程读写（避免并发探测）。
+static BOOL gWBVersionProbing = NO;
+
+static NSString *WBVersionOutput(NSString *command) {
     SPCommandResult *result = [SPSession runSyncShell:command
                                           environment:[[SPToolchainInstaller shared] runtimeEnvironment]
                                                   cwd:NSTemporaryDirectory()
@@ -32,17 +60,38 @@ static NSString *WBVersionOf(NSString *command) {
     return @"未安装";
 }
 
+/// 后台探测所有工具的版本；completion 回到主线程。
+static void WBVersionProbe(BOOL force, void (^completion)(void)) {
+    if (gWBVersionProbing) return;
+    if (!force && WBVersionCache().count >= WBVersionTools().count) {
+        if (completion) completion();
+        return;
+    }
+    gWBVersionProbing = YES;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSArray<NSString *> *names = WBVersionTools();
+        NSArray<NSString *> *commands = WBVersionCommands();
+        NSMutableDictionary<NSString *, NSString *> *found = [NSMutableDictionary dictionary];
+        for (NSUInteger i = 0; i < names.count && i < commands.count; i++) {
+            @autoreleasepool {
+                found[names[i]] = WBVersionOutput(commands[i]);
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [WBVersionCache() addEntriesFromDictionary:found];
+            gWBVersionProbing = NO;
+            if (completion) completion();
+        });
+    });
+}
+
 static NSArray<NSArray<NSString *> *> *WBInstalledVersions(void) {
-    return @[
-        @[@"clang", WBVersionOf(@"clang --version")],
-        @[@"ld64", WBVersionOf(@"ld64 --version")],
-        @[@"ld64.lld", WBVersionOf(@"ld64.lld --version")],
-        @[@"ldid", WBVersionOf(@"ldid -v")],
-        @[@"make", WBVersionOf(@"make --version")],
-        @[@"perl", WBVersionOf(@"perl -e 'printf \"%vd\\n\", $^V'")],
-        @[@"swiftc", WBVersionOf(@"swiftc --version")],
-        @[@"r2", WBVersionOf(@"r2 -v")],
-    ];
+    NSMutableArray<NSArray<NSString *> *> *rows = [NSMutableArray array];
+    for (NSString *tool in WBVersionTools()) {
+        NSString *value = WBVersionCache()[tool] ?: @"检测中…";
+        [rows addObject:@[tool, value]];
+    }
+    return rows;
 }
 
 @implementation WBTheosToolsListController
@@ -51,11 +100,12 @@ static NSArray<NSArray<NSString *> *> *WBInstalledVersions(void) {
     [super viewDidLoad];
     self.title = @"Theos 工具链";
     self.tableView.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    self.tableView.rowHeight = 64;
+    TMCCardTableStyle(self.tableView);
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
         initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh
-                             target:self action:@selector(reload)];
+                             target:self action:@selector(refreshAll)];
     [self reload];
+    [self refreshVersions];
 }
 
 - (void)reload {
@@ -69,6 +119,20 @@ static NSArray<NSArray<NSString *> *> *WBInstalledVersions(void) {
             self.busy = NO;
             [self.tableView reloadData];
         });
+    });
+}
+
+/// 刷新按钮：重新扫组件 + 强制重探版本。
+- (void)refreshAll {
+    [self reload];
+    [self refreshVersions];
+}
+
+/// 重新探测版本（点刷新按钮时强制刷新）。
+- (void)refreshVersions {
+    __weak typeof(self) weakSelf = self;
+    WBVersionProbe(YES, ^{
+        [weakSelf.tableView reloadData];
     });
 }
 
@@ -98,38 +162,36 @@ static NSArray<NSArray<NSString *> *> *WBInstalledVersions(void) {
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *cid = @"WBTheosCell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cid];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cid];
-    }
-    cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-    cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
-    cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+    static NSString *cid = @"WBTheosCard";
+    TMCCardCell *cell = [TMCCardCell cellInTable:tableView reuseIdentifier:cid];
     cell.accessoryView = nil;
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
     if (indexPath.section == 2) {
-        NSArray<NSString *> *row = WBInstalledVersions()[(NSUInteger)indexPath.row];
-        cell.textLabel.text = row[0];
-        cell.detailTextLabel.text = row[1];
+        NSArray<NSArray<NSString *> *> *versions = WBInstalledVersions();
+        if (indexPath.row >= (NSInteger)versions.count) return cell;
+        NSArray<NSString *> *row = versions[(NSUInteger)indexPath.row];
+        BOOL missing = [row[1] isEqualToString:@"未安装"] || [row[1] isEqualToString:@"检测中…"];
+        [cell configureWithTitle:row[0] detail:row[1] symbol:@"number.circle"
+                            tint:(missing ? UIColor.systemOrangeColor : UIColor.systemGreenColor)];
         cell.detailTextLabel.numberOfLines = 2;
-        cell.imageView.image = [UIImage systemImageNamed:@"number.circle"];
-        cell.imageView.tintColor = [row[1] isEqualToString:@"未安装"] ? UIColor.systemOrangeColor : UIColor.systemGreenColor;
         return cell;
     }
+
     if (indexPath.section == 0) {
         SPToolchainInstaller *inst = [SPToolchainInstaller shared];
-        cell.textLabel.text = inst.isInstalled ? @"已安装" : (inst.hasBundledToolchain ? @"待安装" : @"未安装");
-        cell.detailTextLabel.text = inst.isInstalled ? inst.installRoot : @"点此安装内置工具链";
+        [cell configureWithTitle:(inst.isInstalled ? @"已安装" : (inst.hasBundledToolchain ? @"待安装" : @"未安装"))
+                          detail:(inst.isInstalled ? inst.installRoot : @"点此安装内置工具链")
+                          symbol:@"wrench.and.screwdriver.fill"
+                            tint:(inst.isInstalled ? UIColor.systemGreenColor : UIColor.systemOrangeColor)];
         cell.textLabel.textColor = inst.isInstalled ? UIColor.labelColor : UIColor.systemOrangeColor;
         cell.selectionStyle = inst.isInstalled ? UITableViewCellSelectionStyleNone : UITableViewCellSelectionStyleDefault;
         return cell;
     }
 
+    if (indexPath.row >= (NSInteger)self.items.count) return cell;
     SPComponentInfo *info = self.items[indexPath.row];
-    cell.textLabel.text = info.title;
-    cell.detailTextLabel.text = info.detail;
-    cell.textLabel.textColor = UIColor.labelColor;
+    [cell configureWithTitle:info.title detail:info.detail symbol:info.symbol tint:UIColor.systemBlueColor];
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
 
     UILabel *badge = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 76, 28)];
@@ -159,6 +221,7 @@ static NSArray<NSArray<NSString *> *> *WBInstalledVersions(void) {
         return;
     }
 
+    if (indexPath.row >= (NSInteger)self.items.count) return;
     SPComponentInfo *info = self.items[indexPath.row];
     if (info.isInstalled) {
         [self confirmRemove:info];

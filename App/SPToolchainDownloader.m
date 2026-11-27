@@ -129,6 +129,18 @@ static NSArray<NSString *> *SPProxyPrefixes(void) {
     return d;
 }
 
+/// 组件编号 → 清单里的 id。
+/// SPComponent 枚举是历史遗留（含 node/buildtools/python 等清单里没有的项），
+/// 而 currentComponent 实际存的是「清单数组下标」，两者不能混用。
+- (NSString *)identifierForComponent:(SPComponent)component {
+    NSArray *m = SPRuntimeManifest();
+    if (component >= 0 && component < (NSInteger)m.count) {
+        id cid = m[component][@"id"];
+        if ([cid isKindOfClass:NSString.class]) return cid;
+    }
+    return @"";
+}
+
 /// 组件 → 安装子目录（与 runtimes.mjs 的 id 对齐）
 - (NSString *)directoryFor:(SPComponent)component {
     NSArray *m = SPRuntimeManifest();
@@ -157,11 +169,21 @@ static NSArray<NSString *> *SPProxyPrefixes(void) {
         c.symbol = d[@"symbol"];
         c.approxSize = [d[@"size"] unsignedLongLongValue];
 
-        // 已随包内置的组件不再出现在下载列表（probe 指向包内文件）
+        // 已随包内置的组件不再出现在下载列表。
+        // probe 必须指向**包内真实路径**：包内组件在 installRoot 根下，
+        // 下载的组件在 installRoot/<id>/ 下 —— 两处都要看，
+        // 否则装好的组件会一直留在「可安装」列表里。
         NSString *probe = d[@"probe"];
+        NSString *cid = d[@"id"];
         if ([probe isKindOfClass:NSString.class] && probe.length) {
-            NSString *root = [SPToolchainInstaller shared].installRoot ?: [NSBundle.mainBundle bundlePath];
-            if ([[NSFileManager defaultManager] fileExistsAtPath:[root stringByAppendingPathComponent:probe]]) continue;
+            NSString *root = [SPToolchainInstaller shared].installRoot ?: [NSBundle mainBundle].bundlePath;
+            NSFileManager *fm = [NSFileManager defaultManager];
+            BOOL present = [fm fileExistsAtPath:[root stringByAppendingPathComponent:probe]];
+            if (!present && [cid isKindOfClass:NSString.class] && cid.length) {
+                NSString *own = [root stringByAppendingPathComponent:cid];
+                present = [fm fileExistsAtPath:[own stringByAppendingPathComponent:probe]];
+            }
+            if (present) continue;
         }
         [out addObject:c];
     }
@@ -220,51 +242,28 @@ static NSArray<NSString *> *SPProxyPrefixes(void) {
 didFinishDownloadingToURL:(NSURL *)location {
     NSFileManager *fm = NSFileManager.defaultManager;
     NSString *dir = self.destinationDir;
+    // 用清单 id 判断 SDK（枚举值 ≠ 清单下标，见 identifierForComponent:）。
+    BOOL isSDK = [[self identifierForComponent:self.currentComponent] hasPrefix:@"sdk"];
 
-    // 用内置 tar 解包（core_tools 没装时退回系统 tar）
-    NSString *tar = [SPUtil findExecutable:@[@"tar"] searchDirs:@[
-        [SPToolchainInstaller shared].binDir,
-        [SPToolchainInstaller shared].installRoot,
-        @"/usr/bin", @"/var/jb/usr/bin", @"/bin"]];
-    BOOL ok = NO;
-    BOOL isSDK = (self.currentComponent == SPComponentSDK17 || self.currentComponent == SPComponentSDK26);
-
-    // Swift 工具链以 .deb 分发（Procursus swift-5.9.2），tar 解不了，
-    // 必须用 dpkg-deb -x 展开成 usr/bin/swiftc + usr/lib/swift 的目录布局。
-    BOOL isDeb = [[location.path lowercaseString] hasSuffix:@".deb"];
-    if (isDeb) {
-        NSString *dpkg = [SPUtil findExecutable:@[@"dpkg-deb"] searchDirs:@[
-            [SPToolchainInstaller shared].binDir,
-            [SPToolchainInstaller shared].installRoot,
-            @"/var/jb/usr/bin", @"/usr/bin", @"/bin"]];
-        if (dpkg) {
-            if (self.progressBlock) dispatch_async(dispatch_get_main_queue(), ^{ self.progressBlock(0.95, @"解包 deb…"); });
-            NSString *cmd = [NSString stringWithFormat:@"%@ -x %@ %@",
-                             [SPUtil shellQuote:dpkg],
-                             [SPUtil shellQuote:location.path],
-                             [SPUtil shellQuote:dir]];
-            SPCommandResult *r = [SPSession runSyncShell:cmd environment:@{} cwd:NSTemporaryDirectory() timeout:900];
-            ok = (r.exitCode == 0);
-            SPLog(@"Swift 工具链解包%@（exit=%d）", ok ? @"成功" : @"失败", (int)r.exitCode);
-        } else {
-            SPLog(@"[!] 找不到 dpkg-deb，无法展开 Swift 工具链 .deb");
-        }
-        tar = nil;   // 跳过下面的 tar 分支
+    if (self.progressBlock) {
+        dispatch_async(dispatch_get_main_queue(), ^{ self.progressBlock(0.95, @"解包…"); });
     }
-    if (tar) {
-        if (self.progressBlock) dispatch_async(dispatch_get_main_queue(), ^{ self.progressBlock(0.95, @"解包…"); });
-        NSString *cmd = [NSString stringWithFormat:
-            @"%@ xzf %@ -C %@ 2>/dev/null || %@ xzf %@ -C %@ --strip-components=1 2>/dev/null",
-            [SPUtil shellQuote:tar], [SPUtil shellQuote:location.path], [SPUtil shellQuote:dir],
-            [SPUtil shellQuote:tar], [SPUtil shellQuote:location.path], [SPUtil shellQuote:dir]];
-        SPCommandResult *r = [SPSession runSyncShell:cmd environment:@{} cwd:NSTemporaryDirectory() timeout:600];
-        ok = (r.exitCode == 0);
+
+    // **不再调用设备上的 tar / zstd / dpkg-deb**：沙盒里这些命令经常不存在，
+    // 表现就是「下载完成但解包失败」。统一用 App 内嵌的 libarchive。
+    // SDK 归档里的 sdks/ 前缀会原样解到 installRoot/sdks/ 下。
+    NSError *expandError = nil;
+    BOOL ok = [[SPToolchainInstaller shared] expandArchiveAtPath:location.path
+                                                          toPath:dir
+                                                           error:&expandError];
+    if (!ok) {
+        SPLog(@"[!] 组件解包失败：%@（%@）",
+              expandError.localizedDescription ?: @"未知错误", location.lastPathComponent);
     }
     if (ok) {
         // SDK 组件解到 installRoot 顶层，不能写 .installed（会污染全局安装状态），
         // 也不需要给 bin/sbin/libexec 补执行位。
         if (!isSDK) {
-            // 补执行权限
             for (NSString *sub in @[@"bin", @"sbin", @"libexec"]) {
                 NSString *d = [dir stringByAppendingPathComponent:sub];
                 for (NSString *f in [fm contentsOfDirectoryAtPath:d error:NULL] ?: @[]) {
@@ -279,7 +278,9 @@ didFinishDownloadingToURL:(NSURL *)location {
 
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.progressBlock) self.progressBlock(1.0, ok ? @"完成" : @"解包失败");
-        if (self.completionBlock) self.completionBlock(ok, ok ? nil : SPError(SPErrorCodeIO, @"解包失败"));
+        if (self.completionBlock) {
+            self.completionBlock(ok, ok ? nil : (expandError ?: SPError(SPErrorCodeIO, @"解包失败")));
+        }
         self.task = nil;
         self.progressBlock = nil;
         self.completionBlock = nil;

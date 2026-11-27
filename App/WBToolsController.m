@@ -18,8 +18,28 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"执行环境";
-    self.tableView.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    self.tableView.rowHeight = 64;
+    TMCCardTableStyle(self.tableView);
+    // JIT 探测在后台完成，通过通知回主线程刷新这一页。
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(jitStatusChanged:)
+                                                 name:@"SPJITStatusChanged"
+                                               object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    // 页面第一次打开时主动探测一次；probe 内部已经切到后台队列，
+    // 主线程不会再被 runSyncShell / helper 启动阻塞。
+    if (![SPJIT shared].lastProbe) [[SPJIT shared] probe];
+    [self.tableView reloadData];
+}
+
+- (void)jitStatusChanged:(NSNotification *)note {
+    [self.tableView reloadData];
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 2; }
@@ -40,36 +60,30 @@
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *cid = @"WBToolsCell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cid];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cid];
-    }
+    static NSString *cid = @"WBToolsCard";
+    TMCCardCell *cell = [TMCCardCell cellInTable:tableView reuseIdentifier:cid];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-    cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
-    cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
     cell.accessoryView = nil;
 
     if (indexPath.section == 1 && indexPath.row == 1) {
-        cell.textLabel.text = @"JIT 授权";
-        cell.textLabel.textColor = UIColor.labelColor;
-        cell.detailTextLabel.text = [SPJIT shared].isEnabled
-            ? @"当前已可用，无需重复授权"
-            : ([SPJIT shared].canRequestTrollStoreJIT
-               ? @"点一下让 TrollStore 从外部附加（enable-jit）"
-               : @"本机没有 TrollStore 授权入口");
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        BOOL enabled = [SPJIT shared].isEnabled;
+        BOOL canRequest = [SPJIT shared].canRequestTrollStoreJIT;
+        [cell configureWithTitle:@"JIT 授权"
+                          detail:(enabled ? @"当前已可用，无需重复授权"
+                                   : (canRequest ? @"点一下让 TrollStore 从外部附加（enable-jit）"
+                                                 : @"本机没有 TrollStore 授权入口"))
+                          symbol:@"checkmark.shield.fill"
+                            tint:(enabled ? UIColor.systemGreenColor : UIColor.systemOrangeColor)];
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-        cell.imageView.image = [UIImage systemImageNamed:@"checkmark.shield.fill"];
         return cell;
     }
 
     if (indexPath.section == 1) {
-        cell.textLabel.text = @"能力概览";
-        cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@",
-                                     [SPJIT shared].statusText ?: @"JIT 未知",
-                                     [SPAOJIT shared].statusText ?: @"AOJIT 未知"];
+        [cell configureWithTitle:@"能力概览"
+                          detail:[NSString stringWithFormat:@"%@ · %@",
+                                  [SPJIT shared].statusText ?: @"JIT 未知",
+                                  [SPAOJIT shared].statusText ?: @"AOJIT 未知"]
+                          symbol:@"info.circle.fill" tint:UIColor.secondaryLabelColor];
         cell.textLabel.textColor = UIColor.secondaryLabelColor;
         return cell;
     }
@@ -79,20 +93,17 @@
     [sw addTarget:self action:@selector(toggle:) forControlEvents:UIControlEventValueChanged];
 
     if (indexPath.row == 0) {
-        cell.textLabel.text = @"JIT 可执行内存";
-        cell.detailTextLabel.text = [SPJIT shared].statusText ?: @"未探测";
+        [cell configureWithTitle:@"JIT 可执行内存" detail:([SPJIT shared].statusText ?: @"未探测")
+                          symbol:@"bolt.fill" tint:UIColor.systemBlueColor];
         sw.on = [SPJIT shared].userEnabled;
-        cell.imageView.image = [UIImage systemImageNamed:@"bolt.fill"];
     } else if (indexPath.row == 1) {
-        cell.textLabel.text = @"AOJIT 命令快路径";
-        cell.detailTextLabel.text = [SPAOJIT shared].statusText ?: @"未启用";
+        [cell configureWithTitle:@"AOJIT 命令快路径" detail:([SPAOJIT shared].statusText ?: @"未启用")
+                          symbol:@"hare.fill" tint:UIColor.systemBlueColor];
         sw.on = [SPAOJIT shared].userEnabled;
-        cell.imageView.image = [UIImage systemImageNamed:@"hare.fill"];
     } else {
-        cell.textLabel.text = @"iSH 沙盒";
-        cell.detailTextLabel.text = @"仅在命令缺失时启用（会拖慢构建）";
+        [cell configureWithTitle:@"iSH 沙盒" detail:@"仅在命令缺失时启用（会拖慢构建）"
+                          symbol:@"terminal.fill" tint:UIColor.systemGrayColor];
         sw.on = [NSUserDefaults.standardUserDefaults boolForKey:@"Workbench.ishellEnabled"];
-        cell.imageView.image = [UIImage systemImageNamed:@"terminal.fill"];
     }
     cell.accessoryView = sw;
     return cell;
@@ -112,10 +123,8 @@
         }]];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"重新探测" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-            [[SPJIT shared] probe];
-            dispatch_async(dispatch_get_main_queue(), ^{ [self.tableView reloadData]; });
-        });
+        // probe 自带后台队列 + 完成通知，这里不要再用后台队列包一层。
+        [[SPJIT shared] probe];
     }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = tableView;
@@ -127,12 +136,7 @@
     BOOL on = sw.isOn;
     if (sw.tag == 0) {
         [SPJIT shared].userEnabled = on;
-        if (on) {
-            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-                [[SPJIT shared] probe];
-                dispatch_async(dispatch_get_main_queue(), ^{ [self.tableView reloadData]; });
-            });
-        }
+        if (on) [[SPJIT shared] probe];
     } else if (sw.tag == 1) {
         [SPAOJIT shared].userEnabled = on;
     } else {

@@ -25,6 +25,87 @@ static void NavigationTrace(NSString *message){static dispatch_queue_t queue;sta
 @property (weak) UIViewController *workspaceObservedTop;
 @property NSUInteger workspaceObservedDepth;
 @end
+#pragma mark - 卡片 cell
+
+static UIView *TMCCardBackground(BOOL selected) {
+    UIView *card = [UIView new];
+    card.layer.cornerRadius = 16;
+    card.clipsToBounds = YES;
+    if (selected) {
+        card.backgroundColor = [UIColor colorWithWhite:0.5 alpha:0.14];
+        return card;
+    }
+    UIVisualEffect *effect = TMCGlassEffect(NO);
+    if (effect) {
+        UIVisualEffectView *glass = [[UIVisualEffectView alloc] initWithEffect:effect];
+        glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [card addSubview:glass];
+    } else {
+        card.backgroundColor = UIColor.secondarySystemGroupedBackgroundColor;
+    }
+    return card;
+}
+
+@implementation TMCCardCell
+
++ (instancetype)cellInTable:(UITableView *)table reuseIdentifier:(NSString *)identifier {
+    NSString *cid = identifier.length ? identifier : @"TMCCardCell";
+    TMCCardCell *cell = [table dequeueReusableCellWithIdentifier:cid];
+    if (!cell) cell = [[TMCCardCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cid];
+    return cell;
+}
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+    if ((self = [super initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:reuseIdentifier])) {
+        self.backgroundColor = UIColor.clearColor;
+        self.contentView.backgroundColor = UIColor.clearColor;
+        self.backgroundView = TMCCardBackground(NO);
+        self.selectedBackgroundView = TMCCardBackground(YES);
+        self.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+        self.textLabel.textColor = UIColor.labelColor;
+        self.detailTextLabel.font = [UIFont systemFontOfSize:12];
+        self.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+        self.detailTextLabel.numberOfLines = 2;
+        self.imageView.tintColor = UIColor.systemBlueColor;
+        self.separatorInset = UIEdgeInsetsMake(0, 16, 0, 16);
+    }
+    return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGRect card = CGRectInset(self.bounds, 0, 3);
+    self.backgroundView.frame = card;
+    self.selectedBackgroundView.frame = card;
+}
+
+- (void)prepareForReuse {
+    [super prepareForReuse];
+    self.accessoryView = nil;
+    self.imageView.image = nil;
+    self.textLabel.textColor = UIColor.labelColor;
+}
+
+- (void)configureWithTitle:(NSString *)title
+                    detail:(NSString *)detail
+                    symbol:(NSString *)symbol
+                      tint:(UIColor *)tint {
+    self.textLabel.text = title;
+    self.detailTextLabel.text = detail;
+    self.imageView.image = symbol.length ? [UIImage systemImageNamed:symbol] : nil;
+    self.imageView.tintColor = tint ?: UIColor.systemBlueColor;
+    self.accessoryView = nil;
+}
+
+@end
+
+void TMCCardTableStyle(UITableView *table) {
+    table.separatorStyle = UITableViewCellSeparatorStyleNone;
+    table.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    table.rowHeight = UITableViewAutomaticDimension;
+    table.estimatedRowHeight = 64;
+}
+
 @implementation TMCNavigationController
 - (void)applyStudioAppearance {NSInteger theme=[NSUserDefaults.standardUserDefaults integerForKey:@"StudioTheme"];UIUserInterfaceStyle style=theme==1?UIUserInterfaceStyleDark:theme==2?UIUserInterfaceStyleLight:UIUserInterfaceStyleUnspecified;if(self.overrideUserInterfaceStyle!=style)self.overrideUserInterfaceStyle=style;if(self.view.window.overrideUserInterfaceStyle!=style)self.view.window.overrideUserInterfaceStyle=style;}
 - (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];[self applyStudioAppearance];}

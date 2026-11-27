@@ -52,6 +52,13 @@ typedef void (^SPInstallCompletion)(BOOL ok, NSError *_Nullable error);
 /// 卸载（释放空间）
 - (void)uninstall;
 
+/// 用 App 内嵌的 libarchive 解包（**不依赖设备上的 tar / zstd / dpkg-deb**）。
+/// 支持 tar / tar.gz / tar.xz / tar.zst / zip / 7z / deb 等；
+/// 保留可执行位与相对符号链接（越界链接会被丢弃），可解到已存在的目录。
+- (BOOL)expandArchiveAtPath:(NSString *)archivePath
+                     toPath:(NSString *)destination
+                      error:(NSError **)error;
+
 /// 直接给出各组件路径（安装后可用）
 @property (nonatomic, readonly) NSString *binDir;       // usr/bin（优先）或 bin
 @property (nonatomic, readonly) NSString *baseBinDir;   // 始终是 bin（基础命令）

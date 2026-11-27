@@ -9,6 +9,17 @@
 #import <sys/mman.h>
 #import <mach/vm_statistics.h>
 
+/// 探测串行队列：JIT 探测会真实申请可执行内存、必要时还会拉起 helper，
+/// 绝对不能落在主线程（主线程上跑 posix_spawn + usleep + socket 读会卡死界面）。
+static dispatch_queue_t SPJITProbeQueue(void) {
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        queue = dispatch_queue_create("com.huging.spark.jit.probe", DISPATCH_QUEUE_SERIAL);
+    });
+    return queue;
+}
+
 @implementation SPJIT
 
 + (instancetype)shared {
@@ -36,6 +47,20 @@
 }
 
 - (void)probe {
+    // 统一入口：不管从哪个线程调用，都切到后台串行队列执行；
+    // 完成后回主线程发通知（界面自己刷新，不再需要调用方猜时间）。
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(SPJITProbeQueue(), ^{
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+        [self probeNow];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"SPJITStatusChanged" object:self];
+        });
+    });
+}
+
+- (void)probeNow {
     // 1) 先试 JIT 子进程（最可靠：独立身份，能拿可执行内存）
     NSError *svcErr = nil;
     if ([[SPJITService shared] verifyExecutableMemoryWithError:&svcErr]) {
@@ -54,7 +79,11 @@
     // 安全阀：真实执行在「签名不允许执行可写内存」的设备上会被内核直接 SIGKILL，
     // 连崩溃日志都来不及写。只有确认自己是平台级 App（TrollStore / 越狱）或
     // 已经是 root 时才做这一步；普通自签设备退回「只验证分配」的旧判据。
-    BOOL canSafelyExec = self.isPlatformApp || getuid() == 0;
+    // 只有 root（TrollStore 平台注册 / 越狱）才做真实执行验证。
+    // 非 root 的「看起来像平台 App」一旦跳进可执行页，内核会直接 SIGKILL，
+    // 表现就是「点开执行环境闪退」。这类设备优先走子进程；子进程不可用时
+    // 只验证「能分配可执行内存」，不再冒险执行。
+    BOOL canSafelyExec = (getuid() == 0);
     void *p = [self allocateExecutable:4096];
     _viaSubprocess = NO;
     if (p) {

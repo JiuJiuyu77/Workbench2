@@ -399,7 +399,7 @@ static NSArray *StudioSettingSections(void){return @[
  ];}
 @implementation StudioSettings
 - (NSArray *)rowAt:(NSIndexPath *)i{return StudioSettingSections()[i.section][@"rows"][i.row];}
-- (void)viewDidLoad{[super viewDidLoad];self.title=@"设置";ApplyTheme(self);self.tableView.rowHeight=UITableViewAutomaticDimension;self.tableView.estimatedRowHeight=60;}
+- (void)viewDidLoad{[super viewDidLoad];self.title=@"设置";ApplyTheme(self);TMCCardTableStyle(self.tableView);}
 - (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];[self.tableView reloadData];}
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)t{return StudioSettingSections().count;}
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{return [StudioSettingSections()[s][@"rows"] count];}
@@ -408,7 +408,7 @@ static NSArray *StudioSettingSections(void){return @[
 - (void)tabBarPreferenceChanged:(UISwitch *)sender{[NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"StudioAlwaysShowTabBar"];}
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)i{
  NSArray *r=[self rowAt:i];NSString *key=r[0];NSUserDefaults *u=NSUserDefaults.standardUserDefaults;
- UITableViewCell *c=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];c.textLabel.text=r[1];c.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];c.textLabel.numberOfLines=0;c.detailTextLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];c.detailTextLabel.textColor=UIColor.secondaryLabelColor;c.detailTextLabel.numberOfLines=0;c.detailTextLabel.text=r[3];c.imageView.image=[UIImage systemImageNamed:r[2]];c.accessoryType=UITableViewCellAccessoryDisclosureIndicator;c.accessibilityIdentifier=[@"settings." stringByAppendingString:key];
+ TMCCardCell *c=[TMCCardCell cellInTable:t reuseIdentifier:nil];[c configureWithTitle:r[1] detail:r[3] symbol:r[2] tint:UIColor.systemBlueColor];c.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];c.textLabel.numberOfLines=0;c.detailTextLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];c.detailTextLabel.textColor=UIColor.secondaryLabelColor;c.detailTextLabel.numberOfLines=0;c.accessoryType=UITableViewCellAccessoryDisclosureIndicator;c.accessibilityIdentifier=[@"settings." stringByAppendingString:key];
  if([key isEqual:@"optimization"])c.detailTextLabel.text=OptimizationName(GlobalOptimization());
  if([key isEqual:@"obfuscation"])c.detailTextLabel.text=WBAt(@[@"关闭",@"轻度 · cse",@"均衡 · cse+fla",@"强力 · cse+cie+cfe+fla",@"自定义"], MIN(MAX([u integerForKey:@"WorkbenchObfuscation"],0),4));
  if([key isEqual:@"theme"]){NSInteger n=[u integerForKey:@"StudioTheme"];c.detailTextLabel.text=@[@"跟随系统",@"石墨深色",@"纸感浅色"][(n>=0&&n<3)?n:0];}
@@ -420,7 +420,7 @@ static NSArray *StudioSettingSections(void){return @[
  [t deselectRowAtIndexPath:i animated:YES];NSString *key=[self rowAt:i][0];UIViewController *page=nil;
  if([key isEqual:@"obfuscation"]){
   UIAlertController *sheet=[UIAlertController alertControllerWithTitle:@"混淆强度" message:@"OLLVM 编译期混淆；强度越高，编译越慢、产物越难反编译。" preferredStyle:UIAlertControllerStyleActionSheet];
-  NSArray *names=@[@"关闭",@"轻度 · indbr+cse",@"均衡 · indbr+icall+cse",@"强力 · 全部 pass"];
+  NSArray *names=@[@"关闭",@"轻度 · indbr+cse",@"均衡 · indbr+icall+cse",@"强力 · 全部 pass",@"自定义 pass…"];
   for(NSUInteger n=0;n<names.count;n++)[sheet addAction:[UIAlertAction actionWithTitle:names[n] style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){
    if (n == 4) {
        NSArray *all = @[@"cse", @"cie", @"cfe", @"fla"];
@@ -463,9 +463,6 @@ static NSArray *StudioSettingSections(void){return @[
  else if([key isEqual:@"reverse"])page=WBReverseController();
  else if([key isEqual:@"terminal"])page=TFAIISHTerminalController(nil);
  else if([key isEqual:@"tools"])page=TFAIISHToolsController(nil);
- else if([key isEqual:@"remotepage"])page=WBRemoteController();
- else if([key isEqual:@"headers"])page=TFAIClassDumpController();
- else if([key isEqual:@"crash"])page=[[StudioCrashTools alloc]initWithStyle:UITableViewStyleInsetGrouped];
  else if([key isEqual:@"health"])page=WBHealthController();
 
 

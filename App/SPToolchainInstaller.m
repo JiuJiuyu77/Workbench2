@@ -4,6 +4,14 @@
 
 #import "SPToolchainInstaller.h"
 #import "SPCompat.h"
+#import "ArchiveImport.h"
+#import "../Vendor/libarchive-headers/archive.h"
+#import "../Vendor/libarchive-headers/archive_entry.h"
+#import <dlfcn.h>
+#import <fcntl.h>
+#import <unistd.h>
+#import <sys/stat.h>
+#import <errno.h>
 
 static NSString *const kInstalledVersionKey = @"Workbench.toolchainVersion";
 
@@ -41,7 +49,12 @@ static NSString *const kInstalledVersionKey = @"Workbench.toolchainVersion";
     if (docsReady) return docs;
 
     NSString *bundled = self.bundledRoot;
-    if (bundled.length) return bundled;
+    BOOL bundledIsDirectory = NO;
+    // 包内只有压缩包时不能直接当安装目录用（installRoot 必须是目录，
+    // 否则 binDir/theosPath 都会拼在 .tar.gz 后面）。
+    if (bundled.length && [fm fileExistsAtPath:bundled isDirectory:&bundledIsDirectory] && bundledIsDirectory) {
+        return bundled;
+    }
 
     return docs;
 }
@@ -56,8 +69,14 @@ static NSString *const kInstalledVersionKey = @"Workbench.toolchainVersion";
     // 兼容旧版：Resources/Toolchain 作为 folder reference 拷进 .app
     NSString *p = [[NSBundle mainBundle] pathForResource:@"Toolchain" ofType:nil];
     if (p) return p;
-    p = [bundle stringByAppendingPathComponent:@"Toolchain"];
-    return [[NSFileManager defaultManager] fileExistsAtPath:p] ? p : nil;
+    NSString *p = [bundle stringByAppendingPathComponent:@"Toolchain"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:p]) return p;
+    // 有些包只带压缩包（体积更小）：交给 libarchive 展开，不依赖设备 tar/zstd。
+    for (NSString *name in @[@"Toolchain.tar.gz", @"Toolchain.zip", @"Toolchain.tar.xz"]) {
+        NSString *archive = [bundle stringByAppendingPathComponent:name];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:archive]) return archive;
+    }
+    return nil;
 }
 
 - (BOOL)hasBundledToolchain { return self.bundledRoot != nil; }
@@ -309,6 +328,200 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     return env;
 }
 
+#pragma mark - 解包（App 内 libarchive，不依赖设备命令）
+
+/// iOS 自带 libarchive 的版本不一致：zstd 滤镜在旧系统上可能没有这个符号。
+/// 用 dlsym 判断，避免链接期直接依赖（缺失时解压 zst 会给出明确错误）。
+static void SPSupportZstdFilter(struct archive *reader) {
+    typedef int (*SPZstdFn)(struct archive *);
+    SPZstdFn fn = (SPZstdFn)dlsym(RTLD_DEFAULT, "archive_read_support_filter_zstd");
+    if (fn) fn(reader);
+}
+
+/// 压缩包内的相对路径：去掉空段与 "."，拒绝绝对路径与越界 ".."。
+static BOOL SPSafeArchivePath(const char *raw, NSString **outRelative) {
+    if (!raw) return NO;
+    NSString *name = [NSString stringWithUTF8String:raw];
+    if (!name.length) return NO;
+    name = [name stringByReplacingOccurrencesOfString:@"\\" withString:@"/"];
+    if ([name hasPrefix:@"/"]) return NO;
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    for (NSString *part in [name componentsSeparatedByString:@"/"]) {
+        if (!part.length || [part isEqualToString:@"."]) continue;
+        if ([part isEqualToString:@".."]) return NO;
+        [parts addObject:part];
+    }
+    if (!parts.count) return NO;
+    if (outRelative) *outRelative = [parts componentsJoinedByString:@"/"];
+    return YES;
+}
+
+static BOOL SPWriteAllBytes(int fd, const void *bytes, size_t length) {
+    const uint8_t *cursor = (const uint8_t *)bytes;
+    while (length > 0) {
+        ssize_t n = write(fd, cursor, length);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return NO;
+        cursor += (size_t)n;
+        length -= (size_t)n;
+    }
+    return YES;
+}
+
+/// 链接目标必须仍在目标目录内（允许 ../，但解析后不能跑出 destination）。
+static BOOL SPLinkStaysInside(NSString *destination, NSString *target, NSString *linkTarget) {
+    if (!linkTarget.length || [linkTarget hasPrefix:@"/"]) return NO;
+    NSString *root = [destination stringByStandardizingPath];
+    NSString *resolved = [[[target stringByDeletingLastPathComponent]
+                           stringByAppendingPathComponent:linkTarget] stringByStandardizingPath];
+    return [resolved isEqualToString:root] ||
+           [resolved hasPrefix:[root stringByAppendingString:@"/"]];
+}
+
+- (BOOL)expandDebAtPath:(NSString *)archivePath toPath:(NSString *)destination error:(NSError **)error {
+    // .deb 是 ar 包：先取出 data.tar.*，再按普通归档递归解。
+    NSString *stage = [NSTemporaryDirectory() stringByAppendingPathComponent:
+                       [@"WorkbenchDeb-" stringByAppendingString:NSUUID.UUID.UUIDString]];
+    NSError *stageError = nil;
+    if (!TMCExtractArchive([NSURL fileURLWithPath:archivePath], [NSURL fileURLWithPath:stage],
+                           nil, nil, nil, &stageError)) {
+        if (error) *error = stageError ?: SPError(SPErrorCodeIO, @"无法读取 deb 包");
+        return NO;
+    }
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *payload = nil;
+    for (NSString *name in [fm contentsOfDirectoryAtPath:stage error:NULL] ?: @[]) {
+        if ([name hasPrefix:@"data.tar"]) { payload = name; break; }
+    }
+    if (!payload.length) {
+        [fm removeItemAtPath:stage error:NULL];
+        if (error) *error = SPError(SPErrorCodeIO, @"deb 包缺少 data.tar");
+        return NO;
+    }
+    BOOL ok = [self expandArchiveAtPath:[stage stringByAppendingPathComponent:payload]
+                                 toPath:destination error:error];
+    [fm removeItemAtPath:stage error:NULL];
+    return ok;
+}
+
+- (BOOL)expandArchiveAtPath:(NSString *)archivePath
+                     toPath:(NSString *)destination
+                      error:(NSError **)error {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (![fm fileExistsAtPath:archivePath]) {
+        if (error) *error = SPError(SPErrorCodeIO, @"压缩包不存在");
+        return NO;
+    }
+    if ([archivePath.pathExtension.lowercaseString isEqualToString:@"deb"]) {
+        return [self expandDebAtPath:archivePath toPath:destination error:error];
+    }
+    NSError *dirError = nil;
+    if (![fm createDirectoryAtPath:destination withIntermediateDirectories:YES
+                        attributes:nil error:&dirError]) {
+        if (error) *error = dirError ?: SPError(SPErrorCodeIO, @"无法创建解包目录");
+        return NO;
+    }
+
+    struct archive *reader = archive_read_new();
+    // 只启用进程内滤镜：绝不让 libarchive 回退到外部程序（设备上没有 tar/zstd）。
+    archive_read_support_filter_none(reader);
+    archive_read_support_filter_gzip(reader);
+    archive_read_support_filter_bzip2(reader);
+    archive_read_support_filter_xz(reader);
+    archive_read_support_filter_lzma(reader);
+    archive_read_support_filter_compress(reader);
+    SPSupportZstdFilter(reader);
+    archive_read_support_format_tar(reader);
+    archive_read_support_format_zip(reader);
+    archive_read_support_format_7zip(reader);
+    archive_read_support_format_rar(reader);
+    archive_read_support_format_rar5(reader);
+    archive_read_support_format_cpio(reader);
+    archive_read_support_format_xar(reader);
+
+    if (archive_read_open_filename(reader, archivePath.fileSystemRepresentation, 65536) != ARCHIVE_OK) {
+        NSString *message = [NSString stringWithUTF8String:
+                             archive_error_string(reader) ?: "无法识别的压缩格式"];
+        archive_read_free(reader);
+        if (error) *error = SPError(SPErrorCodeIO, message ?: @"无法识别的压缩格式");
+        return NO;
+    }
+
+    struct archive_entry *entry = NULL;
+    int status = ARCHIVE_OK;
+    NSUInteger count = 0;
+    NSString *failure = nil;
+    while ((status = archive_read_next_header(reader, &entry)) == ARCHIVE_OK) {
+        @autoreleasepool {
+            if (++count > 200000) { failure = @"压缩包条目过多"; break; }
+            NSString *relative = nil;
+            if (!SPSafeArchivePath(archive_entry_pathname(entry), &relative)) continue; // 跳过越界/无效项
+            NSString *target = [destination stringByAppendingPathComponent:relative];
+            mode_t type = archive_entry_filetype(entry);
+
+            if (type == AE_IFDIR) {
+                [fm createDirectoryAtPath:target withIntermediateDirectories:YES attributes:nil error:NULL];
+                continue;
+            }
+            if (type == AE_IFLNK) {
+                NSString *linkTarget = archive_entry_symlink(entry)
+                    ? [NSString stringWithUTF8String:archive_entry_symlink(entry)] : nil;
+                if (!SPLinkStaysInside(destination, target, linkTarget)) continue;
+                [fm createDirectoryAtPath:target.stringByDeletingLastPathComponent
+                              withIntermediateDirectories:YES attributes:nil error:NULL];
+                [fm removeItemAtPath:target error:NULL];
+                symlink(linkTarget.fileSystemRepresentation, target.fileSystemRepresentation);
+                continue;
+            }
+            if (type == AE_IFREG && archive_entry_hardlink(entry)) {
+                // 硬链接记录的是**相对归档根**的路径，不是相对当前目录。
+                NSString *hardTarget = [NSString stringWithUTF8String:archive_entry_hardlink(entry)];
+                if (!hardTarget.length || [hardTarget hasPrefix:@"/"]) continue;
+                NSString *root = [destination stringByStandardizingPath];
+                NSString *source = [[destination stringByAppendingPathComponent:hardTarget]
+                                    stringByStandardizingPath];
+                if (![source hasPrefix:[root stringByAppendingString:@"/"]]) continue;
+                [fm createDirectoryAtPath:target.stringByDeletingLastPathComponent
+                              withIntermediateDirectories:YES attributes:nil error:NULL];
+                [fm removeItemAtPath:target error:NULL];
+                link(source.fileSystemRepresentation, target.fileSystemRepresentation);
+                continue;
+            }
+            if (type != AE_IFREG) continue; // 设备节点 / 套接字等一律忽略
+
+            [fm createDirectoryAtPath:target.stringByDeletingLastPathComponent
+                          withIntermediateDirectories:YES attributes:nil error:NULL];
+            [fm removeItemAtPath:target error:NULL];
+            int fd = open(target.fileSystemRepresentation,
+                          O_CREAT | O_WRONLY | O_TRUNC | O_NOFOLLOW, 0644);
+            if (fd < 0) { failure = [NSString stringWithFormat:@"无法写入 %@（%s）", relative, strerror(errno)]; break; }
+            char buffer[65536];
+            la_ssize_t length = 0;
+            BOOL writeOK = YES;
+            while ((length = archive_read_data(reader, buffer, sizeof(buffer))) > 0) {
+                if (!SPWriteAllBytes(fd, buffer, (size_t)length)) { writeOK = NO; break; }
+            }
+            if (length < 0) writeOK = NO;
+            close(fd);
+            if (!writeOK) { failure = [NSString stringWithFormat:@"解压写入失败：%@", relative]; break; }
+            mode_t perm = archive_entry_perm(entry) & 0777;
+            if (!perm) perm = 0644;
+            if (perm & 0111) perm |= 0755;
+            chmod(target.fileSystemRepresentation, perm);
+        }
+    }
+    if (!failure && status != ARCHIVE_EOF) {
+        failure = [NSString stringWithUTF8String:archive_error_string(reader) ?: "压缩包损坏"];
+    }
+    archive_read_free(reader);
+    if (failure.length) {
+        SPLog(@"[!] 解包失败：%@（%@）", failure, archivePath.lastPathComponent);
+        if (error) *error = SPError(SPErrorCodeIO, failure);
+        return NO;
+    }
+    return YES;
+}
+
 #pragma mark - 状态
 
 - (NSString *)installedVersion {
@@ -411,6 +624,9 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     NSString *src = self.bundledRoot;
     NSString *dst = self.installRoot;
 
+    BOOL srcIsDirectory = NO;
+    BOOL srcIsArchive = [fm fileExistsAtPath:src isDirectory:&srcIsDirectory] && !srcIsDirectory;
+
     NSError *err = nil;
     [fm createDirectoryAtPath:[dst stringByDeletingLastPathComponent]
   withIntermediateDirectories:YES attributes:nil error:&err];
@@ -418,11 +634,23 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
     [fm removeItemAtPath:dst error:NULL];
     if (![fm createDirectoryAtPath:dst withIntermediateDirectories:YES attributes:nil error:&err]) return err;
 
+    // 包内运行时是压缩包时，用 App 内 libarchive 展开（设备上没有 tar/zstd）。
+    if (srcIsArchive) {
+        if (progress) progress(0.03, @"解包工具链…");
+        NSError *expandError = nil;
+        if (![self expandArchiveAtPath:src toPath:dst error:&expandError]) {
+            [fm removeItemAtPath:dst error:NULL];
+            return expandError ?: SPError(SPErrorCodeIO, @"解包工具链失败");
+        }
+    }
+
     // 统计文件总数用于进度
     NSMutableArray<NSString *> *entries = [NSMutableArray array];
-    NSDirectoryEnumerator *e = [fm enumeratorAtPath:src];
     NSString *rel;
-    while ((rel = [e nextObject])) [entries addObject:rel];
+    if (!srcIsArchive) {
+        NSDirectoryEnumerator *e = [fm enumeratorAtPath:src];
+        while ((rel = [e nextObject])) [entries addObject:rel];
+    }
     NSUInteger total = MAX(entries.count, 1);
     NSUInteger idx = 0;
     NSUInteger failedCopies = 0;
@@ -436,7 +664,7 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
             if (![fm fileExistsAtPath:from isDirectory:&isDir]) continue;
 
             // 跳过 SDK（不内置）
-            if ([rel hasPrefix:@"theos/sdks"]) { [e skipDescendants]; continue; }
+            if ([rel hasPrefix:@"theos/sdks"]) continue;
 
             if (isDir) {
                 [fm createDirectoryAtPath:to withIntermediateDirectories:YES attributes:nil error:NULL];
