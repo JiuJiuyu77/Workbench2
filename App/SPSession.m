@@ -167,8 +167,18 @@ static NSDictionary<NSString *, NSString *> *SPSanitizeEnvironment(NSDictionary 
     if (self.isRunning) return -1;
 
     int pfd[2], efd[2];
-    if (pipe(pfd) != 0) return -1;
-    if (pipe(efd) != 0) { close(pfd[0]); close(pfd[1]); return -1; }
+    // pipe 失败必须走完成回调：否则调用方（构建流程）会一直等 onFinish，
+    // 表现就是「点了构建没反应」。
+    if (pipe(pfd) != 0 || pipe(efd) != 0) {
+        if (pfd[0] >= 0) { close(pfd[0]); close(pfd[1]); }
+        SPLog(@"[!] 创建管道失败：errno=%d (%s)", errno, strerror(errno));
+        SPCommandResult *fail = [SPCommandResult new];
+        fail.exitCode = -1;
+        fail.launchError = SPError(SPErrorCodeLaunchFailed, @"无法创建子进程管道");
+        self.result = fail;
+        [self finishNotifying];
+        return -1;
+    }
 
     pid_t child = -1;
     posix_spawn_file_actions_t actions;
@@ -240,6 +250,20 @@ static NSDictionary<NSString *, NSString *> *SPSanitizeEnvironment(NSDictionary 
         }
     }
 
+    // 最后兜底：shell 本身起不来时（沙盒拦截 / 缺执行权限），换系统 /bin/sh 再试一次。
+    if (rc != 0 && ![exe isEqualToString:@"/bin/sh"]) {
+        posix_spawnattr_t plainSh;
+        posix_spawnattr_init(&plainSh);
+        posix_spawnattr_setflags(&plainSh, POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGDEF);
+        posix_spawnattr_setpgroup(&plainSh, 0);
+        sigset_t ds; sigemptyset(&ds); sigaddset(&ds, SIGPIPE);
+        posix_spawnattr_setsigdefault(&plainSh, &ds);
+        int rcSh = posix_spawn(&child, "/bin/sh", &actions, &plainSh, argv, envp);
+        posix_spawnattr_destroy(&plainSh);
+        SPLog(@"[!] %@ 启动失败(%d)，改用 /bin/sh 重试：%d", exe, rc, rcSh);
+        if (rcSh == 0) rc = 0; else savedErrno = rcSh;
+    }
+
     for (NSUInteger i = 0; i < argvArr.count; i++) free(argv[i]);
     free(argv);
     for (NSUInteger i = 0; i < envArr.count; i++) free(envp[i]);
@@ -250,6 +274,8 @@ static NSDictionary<NSString *, NSString *> *SPSanitizeEnvironment(NSDictionary 
     close(pfd[1]); close(efd[1]);
 
     if (rc != 0) {
+        SPLog(@"[!] 子进程启动失败：%@（errno %d: %s）",
+              exe, savedErrno, strerror(savedErrno));
         close(pfd[0]); close(efd[0]);
         SPCommandResult *r = [SPCommandResult new];
         r.exitCode = -1;
@@ -385,6 +411,17 @@ static NSDictionary<NSString *, NSString *> *SPSanitizeEnvironment(NSDictionary 
     r.timedOut = self.timedOut;
     if (!r.launchError && !r.cancelled && code != 0) {
         r.launchError = nil; // 非零退出不当作启动错误
+    }
+    // 被信号杀掉的进程常常一行输出都没有（iOS 对未签名/无执行权限的二进制
+    // 直接 SIGKILL），只看到「退出码 137、日志为空」根本没法排查，这里补一句。
+    if (code >= 129 && code <= 159) {
+        int sig = code - 128;
+        NSString *note = [NSString stringWithFormat:
+            @"\n[workbench] 进程被信号 %d 终止（SIGKILL=9；常见原因：二进制未签名或无执行权限）", sig];
+        if (r.stderrText.length < 60000) {
+            r.stderrText = [(r.stderrText ?: @"") stringByAppendingString:note];
+        }
+        SPLog(@"[!] 子进程被信号 %d 终止（exit=%d）", sig, code);
     }
     self.result = r;
     [self finishNotifying];

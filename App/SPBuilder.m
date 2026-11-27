@@ -563,6 +563,14 @@ static NSString *SPCopyIntoPackages(NSString *source, NSString *packages, NSStri
             job.failureHint = r.launchError.localizedDescription ?: [self diagnoseFailureFromLines:job.lines];
             if (r.launchError && onLine) onLine(r.launchError.localizedDescription, SPLogLevelErr);
             if (!job.failureHint) job.failureHint = @"编译失败，请查看上方最后几行 error 输出。";
+            if (job.lines.count == 0) {
+                // 子进程被系统直接杀掉时没有任何输出，构建日志会一片空白。
+                NSString *synthetic = [NSString stringWithFormat:@"exit=%d %@",
+                                       (int)job.exitCode, job.failureHint];
+                [captured addObject:[SPLogLine lineWithText:synthetic level:SPLogLevelErr]];
+                job.lines = [captured copy];
+                if (onLine) onLine(synthetic, SPLogLevelErr);
+            }
         }
 
         if (job.state == SPJobStateSucceeded) {

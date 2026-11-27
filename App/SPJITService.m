@@ -13,6 +13,7 @@
 #import <spawn.h>
 #import <fcntl.h>
 #import <errno.h>
+#import <string.h>
 
 extern char **environ;
 
@@ -90,10 +91,21 @@ extern char **environ;
     }
 
     self.state = SPJITServiceStateStarting;
+    // AF_UNIX 的 sun_path 只有 104 字节。App 沙盒 tmp 目录本身就占 ~89 字节，
+    // 原来的 "spark-jit-<pid>.sock" 拼出来 108 字节，strncpy 会截断 → helper
+    // bind 到截断名，主进程永远等不到 socket（日志显示「socket 未出现」）。
+    // 这里把名字压到 "j<pid>.sock"，并在超长时退到 /tmp。
     NSString *sock = [NSTemporaryDirectory() stringByAppendingPathComponent:
-                      [NSString stringWithFormat:@"spark-jit-%d.sock", getpid()]];
+                      [NSString stringWithFormat:@"j%d.sock", getpid()]];
+    const char *sockPath = sock.fileSystemRepresentation;
+    if (!sockPath || strlen(sockPath) >= 104) {
+        sock = [@"/tmp" stringByAppendingPathComponent:
+                [NSString stringWithFormat:@"j%d.sock", getpid()]];
+    }
     [[NSFileManager defaultManager] removeItemAtPath:sock error:NULL];
     self.socketPath = sock;
+    SPLog(@"JIT 子进程 socket：%@（%lu 字节）", sock,
+          (unsigned long)strlen(sock.fileSystemRepresentation ?: ""));
 
     // 起子进程：把 socket 路径作为参数传进去
     //
@@ -102,7 +114,11 @@ extern char **environ;
     // 实际是解释器不在。用运行时自带的 bash（helpers/bash）。
     NSString *sh = [SPSession resolveShell];
     if (!sh.length) sh = @"/bin/sh";
-    NSString *cmd = [NSString stringWithFormat:@"%@ '%@'", helper, sock];
+    // helper 的 stderr 落到日志文件：socket 绑定失败时能看到真实 errno
+    NSString *helperLog = [NSTemporaryDirectory() stringByAppendingPathComponent:@"spark-jitd.log"];
+    NSString *cmd = [NSString stringWithFormat:@"exec %@ %@ 2>>%@",
+                     [SPUtil shellQuote:helper], [SPUtil shellQuote:sock],
+                     [SPUtil shellQuote:helperLog]];
 
     pid_t child = -1;
     posix_spawn_file_actions_t actions;
@@ -157,7 +173,12 @@ extern char **environ;
 
     if (![[NSFileManager defaultManager] fileExistsAtPath:sock]) {
         self.state = SPJITServiceStateFailed;
-        SPLog(@"JIT 子进程：socket 未出现（helper 可能启动失败）");
+        NSString *detail = [NSString stringWithContentsOfFile:helperLog
+                                                     encoding:NSUTF8StringEncoding error:NULL];
+        if (detail.length > 1200) detail = [detail substringFromIndex:detail.length - 1200];
+        int alive = (self.helperPid > 0 && kill(self.helperPid, 0) == 0) ? 1 : 0;
+        SPLog(@"JIT 子进程：socket 未出现（pid=%d 存活=%d）\n%@",
+              (int)self.helperPid, alive, detail.length ? detail : @"（helper 没有任何输出）");
         [self stop];
         return;
     }

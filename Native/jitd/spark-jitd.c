@@ -149,6 +149,12 @@ int main(int argc, char *argv[]) {
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
+    if (strlen(path) >= sizeof(addr.sun_path)) {
+        fprintf(stderr, "spark-jitd: socket path too long (%zu >= %zu): %s\n",
+                strlen(path), sizeof(addr.sun_path), path);
+        close(fd);
+        return 1;
+    }
     strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
     unlink(path);
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {

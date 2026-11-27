@@ -1,3 +1,14 @@
+## 1.4.14 · Build319
+
+1. 修 JIT helper 起不来的真正原因：AF_UNIX `sun_path` 只有 104 字节，原 socket 路径 108 字节被 `strncpy` 截断，helper 绑定到截断名，主进程永远等不到。改为 `j<pid>.sock`（99 字节），超长退回 `/tmp`；helper 侧加路径长度校验。
+2. 子进程被信号终止（常见 SIGKILL=137）时，在 stderr 与构建日志里写明信号号与原因，不再出现「构建失败但日志空空」。
+3. 构建失败且无任何输出时，自动补一条 `exit=<code> <原因>` 日志；quickbuild.log 同样处理。
+4. `pipe()` 创建失败也会走完成回调，避免「点构建一直等待」。
+5. shell 启动失败自动用 `/bin/sh` 重试一次，并记录两次返回值。
+6. JIT helper 的 stderr 落盘到 `tmp/spark-jitd.log`，启动失败时把日志尾部与 pid 存活状态写进 workbench.log。
+7. 新增 `docs/AUDIT-PROCESS-1.4.14.md`。
+8. 版本 1.4.14（319）。
+
 ## 1.4.13 · Build318
 
 1. 工作台改为 dylix 同款 `insetGrouped` 分组列表，工具行图标使用 dylix 金色强调色；不再使用 1.4.9 那套自定义卡片 cell。
