@@ -17,10 +17,24 @@
 extern UIViewController *WBStudioCrashTools(void);
 extern UIViewController *TFAIClassDumpController(void);
 
+/// dylix 的金色强调色（与 Studio 页同一组动态色）
+static UIColor *WBGold(void) {
+    return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *t) {
+        return t.userInterfaceStyle == UIUserInterfaceStyleDark
+            ? [UIColor colorWithRed:.93 green:.77 blue:.52 alpha:1]
+            : [UIColor colorWithRed:.43 green:.31 blue:.13 alpha:1];
+    }];
+}
+
 @interface WBWorkbenchViewController : UITableViewController
 @end
 
 @implementation WBWorkbenchViewController
+
+/// 与 dylix 的设置/关于页一致：insetGrouped 分组卡片式列表。
+- (instancetype)init {
+    return [super initWithStyle:UITableViewStyleInsetGrouped];
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -110,7 +124,7 @@ extern UIViewController *TFAIClassDumpController(void);
     cell.textLabel.text = titles[indexPath.row];
     cell.detailTextLabel.text = details[indexPath.row];
     cell.imageView.image = [UIImage systemImageNamed:icons[indexPath.row]];
-    cell.imageView.tintColor = UIColor.systemBlueColor;
+    cell.imageView.tintColor = WBGold();
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     return cell;
