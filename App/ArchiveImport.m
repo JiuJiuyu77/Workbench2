@@ -142,6 +142,99 @@ BOOL TMCExtractArchive(NSURL *input, NSURL *destination, NSString *password,
     return ok;
 }
 
+BOOL TMCZipDirectory(NSString *directory, NSString *zipPath, NSString *entryPrefix, NSError **outError) {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    BOOL isDir = NO;
+    if (![fm fileExistsAtPath:directory isDirectory:&isDir] || !isDir)
+        return Fail(outError, TMCArchiveInvalid, @"打包目录不存在");
+    [fm removeItemAtPath:zipPath error:NULL];
+    [fm createDirectoryAtPath:zipPath.stringByDeletingLastPathComponent
+  withIntermediateDirectories:YES attributes:nil error:NULL];
+
+    struct archive *writer = archive_write_new();
+    archive_write_set_format_zip(writer);
+    // 没有 zlib 的 libarchive 会拒绝 deflate，这里忽略返回值：退回 store 也是合法 zip。
+    archive_write_set_options(writer, "zip:compression=deflate");
+    if (archive_write_open_filename(writer, zipPath.fileSystemRepresentation) != ARCHIVE_OK) {
+        NSString *message = ArchiveFailure(writer);
+        archive_write_free(writer);
+        return Fail(outError, TMCArchiveInvalid, message ?: @"无法创建 zip");
+    }
+
+    NSDirectoryEnumerator *walk = [fm enumeratorAtPath:directory];
+    BOOL ok = YES;
+    NSUInteger count = 0;
+    for (NSString *relative in walk) {
+        @autoreleasepool {
+            if (++count > 50000) { ok = Fail(outError, TMCArchiveLimit, @"打包文件超过 50000 个"); break; }
+            NSDictionary *attrs = [walk fileAttributes];
+            NSString *full = [directory stringByAppendingPathComponent:relative];
+            NSString *name = entryPrefix.length ? [entryPrefix stringByAppendingPathComponent:relative] : relative;
+            NSString *type = attrs[NSFileType];
+            struct archive_entry *entry = archive_entry_new();
+            archive_entry_set_pathname(entry, name.fileSystemRepresentation);
+            archive_entry_set_mtime(entry, [attrs[NSFileModificationDate] timeIntervalSince1970], 0);
+            mode_t perm = (mode_t)([attrs[NSFilePosixPermissions] unsignedShortValue] & 0777);
+
+            if ([type isEqual:NSFileTypeDirectory]) {
+                archive_entry_set_filetype(entry, AE_IFDIR);
+                archive_entry_set_perm(entry, 0755);
+                archive_entry_set_size(entry, 0);
+                ok = archive_write_header(writer, entry) == ARCHIVE_OK;
+                archive_entry_free(entry);
+                if (!ok) { Fail(outError, TMCArchiveInvalid, ArchiveFailure(writer)); break; }
+                continue;
+            }
+            if ([type isEqual:NSFileTypeSymbolicLink]) {
+                NSString *target = [fm destinationOfSymbolicLinkAtPath:full error:NULL];
+                if (!target.length) { archive_entry_free(entry); continue; }
+                archive_entry_set_filetype(entry, AE_IFLNK);
+                archive_entry_set_symlink(entry, target.fileSystemRepresentation);
+                archive_entry_set_perm(entry, 0777);
+                archive_entry_set_size(entry, 0);
+                ok = archive_write_header(writer, entry) == ARCHIVE_OK;
+                archive_entry_free(entry);
+                if (!ok) { Fail(outError, TMCArchiveInvalid, ArchiveFailure(writer)); break; }
+                continue;
+            }
+            if (![type isEqual:NSFileTypeRegular]) { archive_entry_free(entry); continue; }
+
+            long long size = [attrs[NSFileSize] longLongValue];
+            archive_entry_set_filetype(entry, AE_IFREG);
+            archive_entry_set_perm(entry, perm ? perm : 0644);
+            archive_entry_set_size(entry, size);
+            if (archive_write_header(writer, entry) != ARCHIVE_OK) {
+                archive_entry_free(entry);
+                ok = Fail(outError, TMCArchiveInvalid, ArchiveFailure(writer));
+                break;
+            }
+            int fd = open(full.fileSystemRepresentation, O_RDONLY);
+            if (fd < 0) {
+                archive_entry_free(entry);
+                ok = Fail(outError, TMCArchiveInvalid, @"读取文件失败");
+                break;
+            }
+            char buffer[65536];
+            ssize_t chunk = 0;
+            while ((chunk = read(fd, buffer, sizeof(buffer))) > 0) {
+                if (archive_write_data(writer, buffer, (size_t)chunk) < 0) {
+                    ok = Fail(outError, TMCArchiveInvalid, ArchiveFailure(writer));
+                    break;
+                }
+            }
+            close(fd);
+            archive_entry_free(entry);
+            if (!ok) break;
+        }
+    }
+
+    if (archive_write_close(writer) != ARCHIVE_OK && ok)
+        ok = Fail(outError, TMCArchiveInvalid, ArchiveFailure(writer));
+    archive_write_free(writer);
+    if (!ok) [fm removeItemAtPath:zipPath error:NULL];
+    return ok;
+}
+
 BOOL TMCExtractDebPackage(NSURL *input, NSURL *destination,
                           NSProgress *cancellation, TMCArchiveProgress progress, NSError **outError) {
     NSFileManager *fm = NSFileManager.defaultManager;

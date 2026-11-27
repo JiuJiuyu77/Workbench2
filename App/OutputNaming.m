@@ -27,6 +27,11 @@ NSString *TMCOutputFilename(NSString *pattern,NSString *extension,NSDictionary<N
 NSDictionary *TMCEffectiveBuildOptions(NSDictionary *config,NSUserDefaults *defaults){
  NSMutableDictionary *resolved=[config mutableCopy]?:[NSMutableDictionary new];
  resolved[@"exportDylib"]=config[@"exportDylib"]?:([defaults objectForKey:@"StudioExportDylib"]?:@YES);
+ // 默认关闭：只有显式开启才会额外产出，避免每次构建都打一堆包。
+ for(NSString *key in @[@"exportIpa",@"exportApp",@"exportBundle",@"exportTool"]){
+  NSString *defaultKey=[@"Studio" stringByAppendingString:[key stringByReplacingCharactersInRange:NSMakeRange(0,1) withString:[[key substringToIndex:1] uppercaseString]]];
+  resolved[key]=config[key]?:([defaults objectForKey:defaultKey]?:@NO);
+ }
  NSString *cxx=config[@"cxxStandard"]?:[defaults stringForKey:@"StudioCxxStandard"];
  NSArray *cxxStandards=@[@"c++98",@"gnu++98",@"c++11",@"gnu++11",@"c++14",@"gnu++14",@"c++17",@"gnu++17",@"c++20",@"gnu++20"];
  resolved[@"cxxStandard"]=[cxxStandards containsObject:cxx]?cxx:@"gnu++17";

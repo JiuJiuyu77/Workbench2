@@ -589,7 +589,17 @@ extern UIViewController *TMCStorageBackup258Regression(void);
         if (ok) {
             NSString *packages = [projectDirectory stringByAppendingPathComponent:@"packages"];
             for (NSString *name in [[NSFileManager defaultManager] contentsOfDirectoryAtPath:packages error:NULL] ?: @[]) {
-                if (![@[@"deb", @"dylib", @"tipa"] containsObject:name.pathExtension.lowercaseString]) continue;
+                NSString *ext = name.pathExtension.lowercaseString;
+                BOOL isArtifact = [@[@"deb", @"dylib", @"tipa", @"ipa", @"app", @"bundle"]
+                                   containsObject:ext];
+                if (!isArtifact && !ext.length) {
+                    // 工具产物没有扩展名：只收可执行文件
+                    NSNumber *perm = [[[NSFileManager defaultManager]
+                                       attributesOfItemAtPath:[packages stringByAppendingPathComponent:name]
+                                       error:NULL] objectForKey:NSFilePosixPermissions];
+                    isArtifact = perm && (perm.unsignedShortValue & 0111) != 0;
+                }
+                if (!isArtifact) continue;
                 NSString *source = [packages stringByAppendingPathComponent:name];
                 NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:source error:NULL];
                 if ([attrs[NSFileModificationDate] timeIntervalSince1970] < startedAt - 1) continue;

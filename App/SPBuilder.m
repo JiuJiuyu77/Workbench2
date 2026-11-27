@@ -12,6 +12,8 @@
 #import "SPProcessGuard.h"
 #import "SPToolchain.h"
 #import "SPStore.h"
+#import "OutputNaming.h"
+#import "ArchiveImport.h"
 
 @implementation SPBuilder
 
@@ -313,10 +315,15 @@
             NSDictionary *attrs = [fm attributesOfItemAtPath:full error:NULL];
             NSDate *mtime = attrs[NSFileModificationDate];
             if (mtime && [mtime timeIntervalSince1970] < cutoff) continue;
-            if ([name hasSuffix:@".deb"] || [name hasSuffix:@".app"] || [name hasSuffix:@".dylib"] ||
-                [name hasSuffix:@".tipa"] || [name hasSuffix:@".zip"]) {
-                [out addObject:full];
+            NSString *ext = name.pathExtension.lowercaseString;
+            BOOL known = [@[@"deb", @"dylib", @"tipa", @"ipa", @"app", @"bundle", @"zip"]
+                          containsObject:ext];
+            if (!known && !isDir && !ext.length) {
+                // 可执行工具产物没有扩展名
+                NSNumber *perm = attrs[NSFilePosixPermissions];
+                known = perm && (perm.unsignedShortValue & 0111) != 0;
             }
+            if (known) [out addObject:full];
         }
     }
     // deb 优先
@@ -325,6 +332,126 @@
         if (da != db) return da ? NSOrderedAscending : NSOrderedDescending;
         return [b compare:a];
     }];
+}
+
+#pragma mark - 额外产物（ipa / app / bundle / tool / dylib）
+
+static void SPCollectPaths(NSString *dir, NSString *suffix, NSMutableArray<NSString *> *out, NSInteger depth) {
+    if (depth > 8 || out.count >= 200) return;
+    NSFileManager *fm = NSFileManager.defaultManager;
+    for (NSString *name in [fm contentsOfDirectoryAtPath:dir error:NULL] ?: @[]) {
+        NSString *full = [dir stringByAppendingPathComponent:name];
+        BOOL isDir = NO;
+        if (![fm fileExistsAtPath:full isDirectory:&isDir]) continue;
+        if ([name.lowercaseString hasSuffix:suffix.lowercaseString]) { [out addObject:full]; continue; }
+        if (isDir) SPCollectPaths(full, suffix, out, depth + 1);
+    }
+}
+
+static NSString *SPCopyIntoPackages(NSString *source, NSString *packages, NSString *name) {
+    if (!name.length) return nil;
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *dest = [packages stringByAppendingPathComponent:name];
+    [fm removeItemAtPath:dest error:NULL];
+    if (![fm copyItemAtPath:source toPath:dest error:NULL]) {
+        SPLog(@"[!] 复制产物失败：%@", name);
+        return nil;
+    }
+    return name;
+}
+
++ (NSArray<NSString *> *)exportSelectedArtifactsInProject:(NSString *)projectPath {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSData *raw = [NSData dataWithContentsOfFile:
+                   [projectPath stringByAppendingPathComponent:@"MobileCompiler.json"]];
+    id json = raw ? [NSJSONSerialization JSONObjectWithData:raw options:0 error:NULL] : nil;
+    NSDictionary *opts = TMCEffectiveBuildOptions([json isKindOfClass:NSDictionary.class] ? json : @{},
+                                                  NSUserDefaults.standardUserDefaults);
+    NSString *staging = [projectPath stringByAppendingPathComponent:@".theos/_"];
+    if (![fm fileExistsAtPath:staging]) return @[];
+    NSString *packages = [projectPath stringByAppendingPathComponent:@"packages"];
+    [fm createDirectoryAtPath:packages withIntermediateDirectories:YES attributes:nil error:NULL];
+
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    NSString *product = [opts[@"productName"] isKindOfClass:NSString.class]
+        ? opts[@"productName"] : projectPath.lastPathComponent;
+
+    // app / ipa：Theos 把应用包放在 .theos/_/Applications/
+    NSMutableArray<NSString *> *apps = [NSMutableArray array];
+    SPCollectPaths(staging, @".app", apps, 0);
+    BOOL wantApp = [opts[@"exportApp"] boolValue];
+    BOOL wantIpa = [opts[@"exportIpa"] boolValue];
+    for (NSString *app in apps) {
+        NSString *appName = app.lastPathComponent;
+        if (wantApp) {
+            NSString *copied = SPCopyIntoPackages(app, packages, appName);
+            if (copied) [names addObject:copied];
+        }
+        if (wantIpa) {
+            NSString *ipaName = [[appName stringByDeletingPathExtension] stringByAppendingPathExtension:@"ipa"];
+            NSString *zipPath = [packages stringByAppendingPathComponent:ipaName];
+            SPLog(@"打包 IPA：%@", ipaName);
+            NSError *zipError = nil;
+            if (TMCZipDirectory(app, zipPath,
+                                [@"Payload" stringByAppendingPathComponent:appName], &zipError)) {
+                [names addObject:ipaName];
+            } else {
+                SPLog(@"[!] 打包 IPA 失败：%@", zipError.localizedDescription ?: appName);
+            }
+        }
+    }
+
+    // .bundle 资源包
+    if ([opts[@"exportBundle"] boolValue]) {
+        NSMutableArray<NSString *> *bundles = [NSMutableArray array];
+        SPCollectPaths(staging, @".bundle", bundles, 0);
+        for (NSString *bundle in bundles) {
+            NSString *copied = SPCopyIntoPackages(bundle, packages, bundle.lastPathComponent);
+            if (copied) [names addObject:copied];
+        }
+    }
+
+    // 可执行工具：/usr/bin、/usr/local/bin 下的普通文件
+    if ([opts[@"exportTool"] boolValue]) {
+        for (NSString *sub in @[@"usr/bin", @"usr/local/bin"]) {
+            NSString *dir = [staging stringByAppendingPathComponent:sub];
+            for (NSString *tool in [fm contentsOfDirectoryAtPath:dir error:NULL] ?: @[]) {
+                NSString *full = [dir stringByAppendingPathComponent:tool];
+                BOOL isDir = NO;
+                if (![fm fileExistsAtPath:full isDirectory:&isDir] || isDir) continue;
+                NSString *copied = SPCopyIntoPackages(full, packages, tool);
+                if (copied) [names addObject:copied];
+            }
+        }
+    }
+
+    // dylib：以前只有开关、没有实现，这里真正导出（按 outputPattern-dylib 命名）
+    if ([opts[@"exportDylib"] boolValue]) {
+        NSMutableArray<NSString *> *dylibs = [NSMutableArray array];
+        SPCollectPaths(staging, @".dylib", dylibs, 0);
+        NSDictionary *context = TMCOutputContext(projectPath, product, [NSDate date]);
+        NSString *pattern = [opts[@"outputPattern-dylib"] isKindOfClass:NSString.class]
+            ? opts[@"outputPattern-dylib"] : @"";
+        NSMutableSet<NSString *> *used = [NSMutableSet set];
+        for (NSString *dylib in dylibs) {
+            NSError *nameError = nil;
+            NSString *name = pattern.length ? TMCOutputFilename(pattern, @"dylib", context, &nameError) : nil;
+            if (!name.length) name = dylib.lastPathComponent;
+            NSString *unique = name;
+            NSUInteger number = 2;
+            while ([used containsObject:unique.lowercaseString]) {
+                unique = [[name.stringByDeletingPathExtension
+                           stringByAppendingFormat:@"-%lu", (unsigned long)number++]
+                          stringByAppendingPathExtension:@"dylib"];
+            }
+            [used addObject:unique.lowercaseString];
+            NSString *copied = SPCopyIntoPackages(dylib, packages, unique);
+            if (copied) [names addObject:copied];
+        }
+    }
+
+    if (names.count) SPLog(@"额外产物：%@", [names componentsJoinedByString:@", "]);
+    return names;
 }
 
 #pragma mark - 失败诊断
@@ -428,6 +555,11 @@
             if (!job.failureHint) job.failureHint = @"编译失败，请查看上方最后几行 error 输出。";
         }
 
+        if (job.state == SPJobStateSucceeded) {
+            // 额外产物（ipa / app / bundle / tool / dylib）先落到 packages/，
+            // collectArtifactsInProject 才能一并收进构建结果。
+            [SPBuilder exportSelectedArtifactsInProject:project.path];
+        }
         NSArray *arts = [self collectArtifactsInProject:project.path since:job.startedAt options:options];
         job.artifacts = arts;
         for (NSString *a in arts) {

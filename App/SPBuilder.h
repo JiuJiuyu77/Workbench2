@@ -24,6 +24,10 @@ NS_ASSUME_NONNULL_BEGIN
                                            since:(NSDate *)since
                                           options:(SPBuildOptions *)options;
 
+/// 按项目配置导出额外产物（ipa / app / bundle / tool / dylib）到 packages/。
+/// 只导出开关打开的项；返回生成的文件名列表（相对 packages/）。
++ (NSArray<NSString *> *)exportSelectedArtifactsInProject:(NSString *)projectPath;
+
 /// 从日志尾部推断失败原因，返回一句人话；无法判断返回 nil
 + (nullable NSString *)diagnoseFailureFromLines:(NSArray<SPLogLine *> *)lines;
 

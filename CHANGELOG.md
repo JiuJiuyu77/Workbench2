@@ -1,3 +1,13 @@
+## 1.4.11 · Build316
+
+1. 构建产物从 2 种扩展到 6 种：deb、dylib、app、ipa、bundle、可执行工具；「构建产物」页可分别开关，六种至少保留一种。
+2. 新增 IPA 打包：把 `.theos/_` 里的 `.app` 打成 `Payload/<App>.app/…` 的 zip（未签名，交给 TrollStore / 签名工具）；新增 libarchive 写 zip（`TMCZipDirectory`）。
+3. dylib 导出补上实现：此前只有开关与命名模板，构建流程里没有导出代码；现在按 `outputPattern-dylib` 命名，重名自动加编号。
+4. app / bundle / tool 从 staging 目录导出；产物统一落到 `packages/`，构建结果与分享流程自动带上。
+5. 构建产物开关与包类型的约束、回滚、持久化全部覆盖新类型；footer 实时汇总。
+6. 新增 `docs/BUILD-ARTIFACTS.md` 与 `docs/AUDIT-1.4.11.md`。
+7. 版本 1.4.11（316）。
+
 ## 1.4.10 · Build315
 
 1. 死代码清理：删除无调用方的 `SPHeaderExport`（头文件导出已由 `TFAIClassDump` 提供）与 `SPDiagnostics`（无入口的风险诊断模块），删除未使用的 `Glass()`；`SPSessionReapAllChildren()` 接回 `applicationWillTerminate:`。
