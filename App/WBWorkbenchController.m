@@ -37,7 +37,7 @@ extern UIViewController *TFAIClassDumpController(void);
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 2; }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return section == 0 ? 3 : 8;
+    return section == 0 ? 3 : 5;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -89,9 +89,9 @@ extern UIViewController *TFAIClassDumpController(void);
         return cell;
     }
 
-    NSArray *titles = @[@"快速构建测试", @"环境自检", @"逆向工作台", @"IPA 头文件导出", @"崩溃分析", @"安装工具", @"存储空间", @"远程工作台"];
+    NSArray *titles = @[@"快速构建测试", @"环境自检", @"逆向工作台", @"IPA 头文件导出", @"崩溃分析"];
     NSArray *details = @[@"编译内置样例 tweak，验证工具链", @"工具链 / 运行时 / 运行环境 / 磁盘", @"分析架构、符号、注入 dylib", @"从 ipa 导出头文件并分享", @"导入 .ips 与符号档案", @"按需安装 Linux 工具与 SDK", @"查看占用并清理缓存", @"SSH 远程构建与局域网工作台"];
-    NSArray *icons = @[@"hammer.fill", @"checkmark.seal.fill", @"binoculars.fill", @"doc.text.magnifyingglass", @"waveform.path.ecg", @"shippingbox.fill", @"internaldrive.fill", @"network"];
+    NSArray *icons = @[@"hammer.fill", @"checkmark.seal.fill", @"binoculars.fill", @"doc.text.magnifyingglass", @"waveform.path.ecg"];
     cell.textLabel.text = titles[indexPath.row];
     cell.detailTextLabel.text = details[indexPath.row];
     cell.imageView.image = [UIImage systemImageNamed:icons[indexPath.row]];
@@ -114,9 +114,7 @@ extern UIViewController *TFAIClassDumpController(void);
         case 2: page = WBReverseController(); break;
         case 3: page = TFAIClassDumpController(); break;
         case 4: page = WBStudioCrashTools(); break;
-        case 5: page = TFAIISHToolsController(nil); break;
-        case 6: page = TMCStorageController(); break;
-        case 7: page = WBRemoteController(); break;
+
         default: break;
     }
     if ([page isKindOfClass:UINavigationController.class]) page = ((UINavigationController *)page).viewControllers.firstObject;

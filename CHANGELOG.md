@@ -1,3 +1,8 @@
+## 1.4.8 · Build313
+
+1. 入口归属整理：工作台只保留「快速构建测试 / 环境自检 / 逆向工作台 / IPA 头文件导出 / 崩溃分析」；安装工具、存储空间、远程工作台移到设置页。
+2. 版本 1.4.8（313）。
+
 ## 1.4.7 · Build312
 
 1. 修 TrollStore 安装失败 `ldid.cpp(529) _assert(): stream.sputn(...) == writ`：包内 Toolchain 里 579 个 Mach-O 之前被打了 ad-hoc 签名，TrollStore 用 ldid 重签时写不进去；改为打包时 `codesign --remove-signature` 去掉旧签名，交由 TrollStore 统一签。
