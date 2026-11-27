@@ -250,18 +250,33 @@ static NSDictionary<NSString *, NSString *> *SPSanitizeEnvironment(NSDictionary 
         }
     }
 
-    // 最后兜底：shell 本身起不来时（沙盒拦截 / 缺执行权限），换系统 /bin/sh 再试一次。
-    if (rc != 0 && ![exe isEqualToString:@"/bin/sh"]) {
-        posix_spawnattr_t plainSh;
-        posix_spawnattr_init(&plainSh);
-        posix_spawnattr_setflags(&plainSh, POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGDEF);
-        posix_spawnattr_setpgroup(&plainSh, 0);
-        sigset_t ds; sigemptyset(&ds); sigaddset(&ds, SIGPIPE);
-        posix_spawnattr_setsigdefault(&plainSh, &ds);
-        int rcSh = posix_spawn(&child, "/bin/sh", &actions, &plainSh, argv, envp);
-        posix_spawnattr_destroy(&plainSh);
-        SPLog(@"[!] %@ 启动失败(%d)，改用 /bin/sh 重试：%d", exe, rc, rcSh);
-        if (rcSh == 0) rc = 0; else savedErrno = rcSh;
+    // 深度根治 spawn 稳定性：
+    // 若指定路径（如 helpers/bash 或工具链 shell）因沙盒、无执行位、架构不匹配等起不来，
+    // 自动按降级链重试：
+    //   1. 若当前不是 /bin/sh，先尝试系统 /bin/sh；
+    //   2. 若 /bin/sh 仍失败，尝试 /var/jb/bin/sh（越狱环境）；
+    //   3. 若均失败，尝试纯静态兜底或 sh。
+    if (rc != 0) {
+        NSArray<NSString *> *fallbacks = @[@"/bin/sh", @"/var/jb/bin/sh", @"/bin/bash"];
+        for (NSString *fb in fallbacks) {
+            if ([fb isEqualToString:exe]) continue;
+            posix_spawnattr_t fbAttr;
+            posix_spawnattr_init(&fbAttr);
+            posix_spawnattr_setflags(&fbAttr, POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGDEF);
+            posix_spawnattr_setpgroup(&fbAttr, 0);
+            sigset_t fds; sigemptyset(&fds); sigaddset(&fds, SIGPIPE);
+            posix_spawnattr_setsigdefault(&fbAttr, &fds);
+            
+            int rcFb = posix_spawn(&child, fb.fileSystemRepresentation, &actions, &fbAttr, argv, envp);
+            posix_spawnattr_destroy(&fbAttr);
+            SPLog(@"[!] 尝试启动 %@ 失败(%d)，降级使用 %@ 结果：%d", exe, rc, fb, rcFb);
+            if (rcFb == 0) {
+                rc = 0;
+                break;
+            } else {
+                savedErrno = rcFb;
+            }
+        }
     }
 
     for (NSUInteger i = 0; i < argvArr.count; i++) free(argv[i]);
