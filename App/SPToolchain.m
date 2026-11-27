@@ -289,8 +289,9 @@ static NSString *const kMarks[] = {@"✓", @"✗"};
     NSArray *roots = [self candidateRoots];
     NSFileManager *fm = NSFileManager.defaultManager;
 
-    // 1) Theos：tools/theos-local、tools/theos-full、theos-root/theos、…/theos
-    NSString *theos = [self firstExistingDirectory:@[@"Workbench/Toolchain/theos", @"Toolchain/theos",
+    // 1) Theos：优先用安装器给的可写覆盖层（包内目录只读，$THEOS/sdks 写不进去）
+    NSString *theos = [SPToolchainInstaller shared].theosPath;
+    if (!theos) theos = [self firstExistingDirectory:@[@"Workbench/Toolchain/theos", @"Toolchain/theos",
                                                      @"theos",
                                                      @"tools/theos-local",
                                                      @"theos-root/theos", @"tools/theos-root/theos",
@@ -315,6 +316,9 @@ static NSString *const kMarks[] = {@"✓", @"✗"};
 
     // 候选目录：把所有可能的位置都列出来
     if (theos) [sdkDirs addObject:[theos stringByAppendingPathComponent:@"sdks"]];
+    // 用户下载的 SDK 落在可写层
+    NSString *writableSDKs = [[SPToolchainInstaller shared].writableRoot stringByAppendingPathComponent:@"theos-runtime/sdks"];
+    [sdkDirs addObject:writableSDKs];
     for (NSString *rel in @[@"sdks",                       // 顶层（DSH/Rein 布局）
                             @"theos-root/theos/sdks",      // 平铺后 Theos 自己的 sdks
                             @"theos-full/sdks",
@@ -525,6 +529,8 @@ static NSString *const kMarks[] = {@"✓", @"✗"};
     NSMutableArray<NSString *> *dirs = [NSMutableArray array];
     NSString *theos = [self.scan pathFor:SPToolchainComponentTheos];
     if (theos.length) [dirs addObject:[theos stringByAppendingPathComponent:@"sdks"]];
+    NSString *writableSDKs = [[SPToolchainInstaller shared].writableRoot stringByAppendingPathComponent:@"theos-runtime/sdks"];
+    if (![dirs containsObject:writableSDKs]) [dirs addObject:writableSDKs];
     for (NSString *root in [self candidateRoots]) {
         for (NSString *rel in @[@"theos-root/theos/sdks", @"theos/sdks", @"sdks",
                                 @"theos-full/sdks", @"theos-local/sdks",

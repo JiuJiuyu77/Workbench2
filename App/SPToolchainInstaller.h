@@ -52,6 +52,10 @@ typedef void (^SPInstallCompletion)(BOOL ok, NSError *_Nullable error);
 /// 卸载（释放空间）
 - (void)uninstall;
 
+/// 可写根目录：Documents/Workbench/Toolchain（组件下载 / SDK 都放这里）。
+/// 包内 Toolchain 在 iOS 上是只读的，写进去会报「没有权限」。
+@property (nonatomic, readonly) NSString *writableRoot;
+
 /// 用 App 内嵌的 libarchive 解包（**不依赖设备上的 tar / zstd / dpkg-deb**）。
 /// 支持 tar / tar.gz / tar.xz / tar.zst / zip / 7z / deb 等；
 /// 保留可执行位与相对符号链接（越界链接会被丢弃），可解到已存在的目录。

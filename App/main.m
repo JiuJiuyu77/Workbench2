@@ -679,9 +679,10 @@ static void TMCBundleAudit(void) {
     NSString *bundle = [NSBundle.mainBundle bundlePath];
     NSArray *required = @[@"RemoteWeb/index.html", @"FLEXPlugin/manifest.json",
                           @"iSH/alpine-minirootfs-3.21.0-aarch64.tar.gz",
-                          @"Toolchain/theos-root/usr/bin/clang-16",
+                          @"Toolchain/ollvm/bin/clang",
                           @"Toolchain/theos-root/usr/bin/ldid",
-                          @"Toolchain/reverse/bin/r2",
+                          @"Toolchain/theos-full/bin/logos.pl",
+                          @"Toolchain/reverse/bin/mt-macho",
                           @"bin/spark-jitd"];
     NSMutableArray *missing = [NSMutableArray array];
     for (NSString *relative in required) {

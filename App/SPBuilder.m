@@ -93,12 +93,17 @@
         // （已删除 theos-full，SDK 现按 DSH 布局放在顶层 sdks/）
         // SDK 可能在 $THEOS/sdks，也可能独立在 $SPARK_TC/sdks（Rein 布局）。
         // 判定条件要同时接受两种，否则会跳过真正能用的 theos。
-        [lines addObject:@"for t in \"$SPARK_TC/theos-root/theos\" \"$SPARK_TC/theos\" "
+        // 优先用 profile 注入的 THEOS（可写覆盖层，$THEOS/sdks 能写）。
+        // 包内 theos-full / theos-root 是只读的，往里复制 SDK 会报没有权限。
+        [lines addObject:@"if [ -n \"${THEOS:-}\" ] && [ -f \"$THEOS/makefiles/common.mk\" ]; then "
+                      "ok \"THEOS=$THEOS（可写覆盖层）\"; "
+                      "else "
+                      "for t in \"$SPARK_TC/theos-full\" \"$SPARK_TC/theos-root/theos\" \"$SPARK_TC/theos\" "
                       "\"$SPARK_TC/TheosRuntime/theos\"; do "
                       "[ -f \"$t/makefiles/common.mk\" ] || continue; "
                       "{ ls \"$t\"/sdks/iPhoneOS*.sdk >/dev/null 2>&1 || "
                       "ls \"$SPARK_TC\"/sdks/iPhoneOS*.sdk >/dev/null 2>&1; } || continue; "
-                      "export THEOS=\"$t\"; break; done"];
+                      "export THEOS=\"$t\"; break; done; fi"];
         // 有些工程把 THEOS 写死成 /var/mobile/theos；能写就补一条软链，失败忽略。
         [lines addObject:@"if [ -n \"${THEOS:-}\" ] && [ ! -e /var/mobile/theos ]; then mkdir -p /var/mobile 2>/dev/null; ln -s \"$THEOS\" /var/mobile/theos 2>/dev/null || true; fi"];
         // SDK 在顶层时，把它软链进 $THEOS/sdks，让 make 找得到

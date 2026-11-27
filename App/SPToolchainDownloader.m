@@ -144,16 +144,22 @@ static NSArray<NSString *> *SPProxyPrefixes(void) {
 /// 组件 → 安装子目录（与 runtimes.mjs 的 id 对齐）
 - (NSString *)directoryFor:(SPComponent)component {
     NSArray *m = SPRuntimeManifest();
-    NSString *root = [SPToolchainInstaller shared].installRoot;
-    // SDK 组件：归档内部自带 sdks/ 前缀，直接解到 installRoot 顶层
-    //（installRoot/sdks/iPhoneOS17.0.sdk/...），不能嵌套成 installRoot/sdk17。
-    if (component == SPComponentSDK17 || component == SPComponentSDK26) {
-        return root;
+    SPToolchainInstaller *inst = [SPToolchainInstaller shared];
+    // 包内 Toolchain 是只读的：下载一律落到 Documents 的可写目录。
+    NSString *root = inst.writableRoot;
+    NSString *cid = [self identifierForComponent:component];
+    // SDK 归档自带 sdks/ 前缀，要解到「可写 THEOS 根」，
+    // 这样 SDK 直接出现在 $THEOS/sdks/iPhoneOS*.sdk（make 才能找到）。
+    // 注意按清单 id 判断（枚举值 ≠ 清单下标，见 identifierForComponent:）。
+    if ([cid hasPrefix:@"sdk"]) {
+        NSString *theos = inst.theosPath;
+        if (theos.length && [theos hasPrefix:root]) return theos;
+        NSString *fallback = [root stringByAppendingPathComponent:@"theos-runtime"];
+        [NSFileManager.defaultManager createDirectoryAtPath:fallback
+                                withIntermediateDirectories:YES attributes:nil error:NULL];
+        return fallback;
     }
-
-    if (component >= 0 && component < (NSInteger)m.count) {
-        return [root stringByAppendingPathComponent:m[component][@"id"]];
-    }
+    if (cid.length) return [root stringByAppendingPathComponent:cid];
     return root;
 }
 
@@ -176,12 +182,19 @@ static NSArray<NSString *> *SPProxyPrefixes(void) {
         NSString *probe = d[@"probe"];
         NSString *cid = d[@"id"];
         if ([probe isKindOfClass:NSString.class] && probe.length) {
-            NSString *root = [SPToolchainInstaller shared].installRoot ?: [NSBundle mainBundle].bundlePath;
+            SPToolchainInstaller *inst = [SPToolchainInstaller shared];
             NSFileManager *fm = [NSFileManager defaultManager];
-            BOOL present = [fm fileExistsAtPath:[root stringByAppendingPathComponent:probe]];
-            if (!present && [cid isKindOfClass:NSString.class] && cid.length) {
-                NSString *own = [root stringByAppendingPathComponent:cid];
-                present = [fm fileExistsAtPath:[own stringByAppendingPathComponent:probe]];
+            NSMutableArray<NSString *> *roots = [NSMutableArray array];
+            if (inst.installRoot.length) [roots addObject:inst.installRoot];
+            if (inst.writableRoot.length && ![roots containsObject:inst.writableRoot]) [roots addObject:inst.writableRoot];
+            if (!roots.count) [roots addObject:[NSBundle mainBundle].bundlePath];
+            BOOL present = NO;
+            for (NSString *root in roots) {
+                if ([fm fileExistsAtPath:[root stringByAppendingPathComponent:probe]]) { present = YES; break; }
+                if ([cid isKindOfClass:NSString.class] && cid.length) {
+                    NSString *own = [root stringByAppendingPathComponent:cid];
+                    if ([fm fileExistsAtPath:[own stringByAppendingPathComponent:probe]]) { present = YES; break; }
+                }
             }
             if (present) continue;
         }

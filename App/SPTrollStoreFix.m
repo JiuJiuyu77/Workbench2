@@ -149,6 +149,10 @@ extern CFTypeRef SecTaskCopyValueForEntitlement(SecTaskRef task,
 // 仅当 App 自己拿不到可执行内存时才用这条路（见 SPJIT）。
 static NSString *const kSPEnableJITURL = @"apple-magnifier://enable-jit";
 
++ (BOOL)canRequestTrollStoreJIT {
+    return [self canRequestJITAuthorization];
+}
+
 + (BOOL)canRequestJITAuthorization {
     NSURL *url = [NSURL URLWithString:kSPEnableJITURL];
     return url && [UIApplication.sharedApplication canOpenURL:url];

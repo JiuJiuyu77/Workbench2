@@ -295,6 +295,11 @@ void WBHealthRunQuickBuild(UIViewController *host) {
             if (line.length) [log appendFormat:@"%@\n", line];
         } onFinish:^(SPJob *job) {
             ok = (job.exitCode == 0);
+            // 子进程没起来时不会有任何输出，这里补上原因，避免 quickbuild.log 为空。
+            if (log.length == 0) {
+                NSString *hint = job.failureHint ?: @"构建进程没有产生输出";
+                [log appendFormat:@"exit=%d\n%@\n", (int)job.exitCode, hint];
+            }
             dispatch_semaphore_signal(done);
         }];
         dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(600 * NSEC_PER_SEC)));

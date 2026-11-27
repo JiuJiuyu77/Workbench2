@@ -77,7 +77,7 @@ static NSString *ValidateProjectOptions(NSString *root, BOOL checkSources) {
     return nil;
 }
 static NSString *ValidateProject(NSString *root){return ValidateProjectOptions(root,YES);}
-static BOOL JSONWrite(NSDictionary *d, NSString *path, NSError **error) { NSData *data=[NSJSONSerialization dataWithJSONObject:d options:NSJSONWritingPrettyPrinted error:error]; return data && [data writeToFile:path options:NSDataWritingAtomic error:error]; }
+static BOOL JSONWrite(NSDictionary *d, NSString *path, NSError **error) { if(!path.length||![d isKindOfClass:NSDictionary.class])return NO; NSData *data=[NSJSONSerialization dataWithJSONObject:d options:NSJSONWritingPrettyPrinted error:error]; return data && [data writeToFile:path options:NSDataWritingAtomic error:error]; }
 static BOOL NameOK(NSString *n) { return n.length && n.length<100 && ![n containsString:@"/"] && ![n containsString:@"\\"] && ![n isEqual:@"."] && ![n isEqual:@".."] && [n rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location==NSNotFound; }
 static NSString *Child(NSString *root, NSString *relative) { if (relative.isAbsolutePath) return nil; NSString *base=root.stringByResolvingSymlinksInPath; NSString *p=[root stringByAppendingPathComponent:relative].stringByResolvingSymlinksInPath; return [p hasPrefix:[base stringByAppendingString:@"/"]]?p:nil; }
 static NSString *ControlName(NSString *root){NSString *text=[NSString stringWithContentsOfFile:[root stringByAppendingPathComponent:@"control"] encoding:NSUTF8StringEncoding error:nil];for(NSString *line in [text componentsSeparatedByString:@"\n"]){if([line hasPrefix:@"Name:"]){NSString *name=[[line substringFromIndex:5] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];if(name.length)return name;}}return nil;}
@@ -454,14 +454,14 @@ static NSString *OptimizationName(NSString *value){return @{@"release-speed":@"�
 @end
 static NSArray *StudioSettingSections(void){return @[
  @{@"title":@"插件开发",@"rows":@[@[@"theos",@"Theos 工具链",@"wrench.and.screwdriver",@"安装与查看编译工具链"],@[@"build",@"默认构建设置",@"hammer",@"SDK、最低系统与产物"],@[@"optimization",@"优化方案",@"speedometer",@""],@[@"obfuscation",@"混淆强度",@"shield.lefthalf.filled",@"编译期 OLLVM 混淆"],@[@"git",@"Git 与源代码管理",@"point.3.connected.trianglepath.dotted",@"身份、服务账号与自动存档"],@[@"remote",@"局域网远程",@"network",@"浏览器工作台与本机连接"]]},
- @{@"title":@"终端与逆向",@"rows":@[@[@"terminal",@"终端",@"terminal",@"打开独立 Linux 沙盒"],@[@"tools",@"安装工具",@"shippingbox",@"按需安装、查看状态与卸载"],@[@"health",@"环境自检",@"checkmark.shield",@"检查构建依赖与工具链是否齐全"],@[@"execenv",@"执行环境",@"gearshape.2",@"JIT / AOJIT / iSH 开关"],@[@"reverse",@"逆向工作台",@"waveform.path",@"反汇编、符号、字符串、deb 解包"]]},
+ @{@"title":@"终端与逆向",@"rows":@[@[@"terminal",@"终端",@"terminal",@"打开独立 Linux 沙盒"],@[@"tools",@"安装工具",@"shippingbox",@"按需安装、查看状态与卸载"],@[@"execenv",@"执行环境",@"gearshape.2",@"JIT / AOJIT / iSH 开关"]]},
  @{@"title":@"数据与工具",@"rows":@[@[@"storage",@"存储空间",@"internaldrive",@"查看占用与清理缓存"]]},
  @{@"title":@"外观与编辑器",@"rows":@[@[@"theme",@"界面外观",@"circle.lefthalf.filled",@""],@[@"font",@"代码字号",@"textformat.size",@""],@[@"tabs",@"始终显示底部导航栏",@"rectangle.bottomthird.inset.filled",@""]]},
  @{@"title":@"关于与支持",@"rows":@[@[@"about",@"关于 Workbench",@"info.circle",@"版本更新、使用说明与工具链"],@[@"feedback",@"反馈与建议",@"bubble.left.and.bubble.right",@""],@[@"website",@"官方网站",@"globe",@""],@[@"source",@"项目开源地址",@"chevron.left.forwardslash.chevron.right",@""],@[@"license",@"软件许可证",@"doc.text",@""]]}
  ];}
 @implementation StudioSettings
 - (NSArray *)rowAt:(NSIndexPath *)i{return StudioSettingSections()[i.section][@"rows"][i.row];}
-- (void)viewDidLoad{[super viewDidLoad];self.title=@"设置";ApplyTheme(self);TMCCardTableStyle(self.tableView);}
+- (void)viewDidLoad{[super viewDidLoad];self.title=@"设置";ApplyTheme(self);self.tableView.rowHeight=UITableViewAutomaticDimension;self.tableView.estimatedRowHeight=60;}
 - (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];[self.tableView reloadData];}
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)t{return StudioSettingSections().count;}
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{return [StudioSettingSections()[s][@"rows"] count];}
@@ -470,7 +470,7 @@ static NSArray *StudioSettingSections(void){return @[
 - (void)tabBarPreferenceChanged:(UISwitch *)sender{[NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"StudioAlwaysShowTabBar"];}
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)i{
  NSArray *r=[self rowAt:i];NSString *key=r[0];NSUserDefaults *u=NSUserDefaults.standardUserDefaults;
- TMCCardCell *c=[TMCCardCell cellInTable:t reuseIdentifier:nil];[c configureWithTitle:r[1] detail:r[3] symbol:r[2] tint:UIColor.systemBlueColor];c.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];c.textLabel.numberOfLines=0;c.detailTextLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];c.detailTextLabel.textColor=UIColor.secondaryLabelColor;c.detailTextLabel.numberOfLines=0;c.accessoryType=UITableViewCellAccessoryDisclosureIndicator;c.accessibilityIdentifier=[@"settings." stringByAppendingString:key];
+ UITableViewCell *c=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];c.textLabel.text=r[1];c.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];c.textLabel.numberOfLines=0;c.detailTextLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];c.detailTextLabel.textColor=UIColor.secondaryLabelColor;c.detailTextLabel.numberOfLines=0;c.detailTextLabel.text=r[3];c.imageView.image=[UIImage systemImageNamed:r[2]];c.accessoryType=UITableViewCellAccessoryDisclosureIndicator;c.accessibilityIdentifier=[@"settings." stringByAppendingString:key];
  if([key isEqual:@"optimization"])c.detailTextLabel.text=OptimizationName(GlobalOptimization());
  if([key isEqual:@"obfuscation"])c.detailTextLabel.text=WBAt(@[@"关闭",@"轻度 · cse",@"均衡 · cse+fla",@"强力 · cse+cie+cfe+fla",@"自定义"], MIN(MAX([u integerForKey:@"WorkbenchObfuscation"],0),4));
  if([key isEqual:@"theme"]){NSInteger n=[u integerForKey:@"StudioTheme"];c.detailTextLabel.text=@[@"跟随系统",@"石墨深色",@"纸感浅色"][(n>=0&&n<3)?n:0];}
@@ -522,10 +522,10 @@ static NSArray *StudioSettingSections(void){return @[
  else if([key isEqual:@"remote"])page=WBRemoteController();
  else if([key isEqual:@"theos"])page=WBTheosToolsController();
  else if([key isEqual:@"execenv"])page=WBToolsController();
- else if([key isEqual:@"reverse"])page=WBReverseController();
+
  else if([key isEqual:@"terminal"])page=TFAIISHTerminalController(nil);
  else if([key isEqual:@"tools"])page=TFAIISHToolsController(nil);
- else if([key isEqual:@"health"])page=WBHealthController();
+
 
 
  else if([key isEqual:@"storage"])page=TMCStorageController();
@@ -1293,7 +1293,11 @@ static void OpenLinuxProjectTerminal(UIViewController *host,NSString *root){
   dispatch_async(dispatch_get_main_queue(),^{
    self.editor.editable=YES;self.snapshotProgress=nil;
    if(!copied||progress.cancelled||self.engine.cancelRequested){if(copied)[NSFileManager.defaultManager removeItemAtPath:snap error:nil];self.busy=NO;[[TMCGitAutomation shared] buildFinished:self.root success:NO];self.navigationItem.rightBarButtonItems.firstObject.enabled=YES;self.logTitle.text=progress.cancelled?@"已取消准备构建":@"创建构建快照失败";self.logDetail.text=error.localizedDescription;self.logIcon.image=[UIImage systemImageNamed:@"xmark.circle.fill"];self.logIcon.tintColor=UIColor.systemRedColor;return;}
-   TMCDocumentHide(snap);self.snapshot=snap;self.engine.importedProject=snap;__weak typeof(self) weakSelf=self;self.engine.buildCompletion=^(BOOL success){StudioEditor *v=weakSelf;if(!v)return;JSONWrite(@{@"project":v.root,@"projectKey":[v cacheOwner],@"snapshot":snap,@"sessionID":sessionID?:@""},[v.engine.lastBuild stringByAppendingPathComponent:@".studio-cache-owner.json"],nil);NSString *exportBuild=v.engine.lastBuild;dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{TMCDocumentPublishBuild(Docs(),exportBuild,nil);});[v refreshBuild];NSString *keep=v.engine.lastBuild,*root=v.root;dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{TMCPruneBuildCaches(Docs(),root,keep);});};[self.engine runProof];JSONWrite(@{@"project":self.root,@"projectKey":[self cacheOwner],@"snapshot":snap,@"sessionID":sessionID?:@""},[self.engine.lastBuild stringByAppendingPathComponent:@".studio-cache-owner.json"],nil);[self rememberBuildCache];if(self.busy)self.timer=[NSTimer scheduledTimerWithTimeInterval:.35 repeats:YES block:^(NSTimer *timer){[weakSelf refreshBuild];}];
+   TMCDocumentHide(snap);self.snapshot=snap;self.engine.importedProject=snap;__weak typeof(self) weakSelf=self;self.engine.buildCompletion=^(BOOL success){StudioEditor *v=weakSelf;if(!v)return;NSString *cacheOwner=v.cacheOwner?:@"";NSString *ownerPath=v.engine.lastBuild.length?[v.engine.lastBuild stringByAppendingPathComponent:@".studio-cache-owner.json"]:nil;if(ownerPath.length)JSONWrite(@{@"project":v.root?:@"",@"projectKey":cacheOwner,@"snapshot":snap?:@"",@"sessionID":sessionID?:@""},ownerPath,nil);NSString *exportBuild=v.engine.lastBuild;dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{TMCDocumentPublishBuild(Docs(),exportBuild,nil);});[v refreshBuild];NSString *keep=v.engine.lastBuild,*root=v.root;dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{TMCPruneBuildCaches(Docs(),root,keep);});};[self.engine runProof];
+   // runProof 可能在「工具链未就绪 / 已有构建」时直接 return，lastBuild 仍为空。
+   // 以前这里继续拼路径写 JSON，writeToFile:nil 会抛异常闪退。
+   if(!self.engine.lastBuild.length){self.busy=NO;self.editor.editable=YES;self.statusPanel.hidden=YES;self.logTitle.text=@"无法开始构建";self.logDetail.text=self.engine.console.text?:@"工具链未就绪";self.logIcon.image=[UIImage systemImageNamed:@"xmark.circle.fill"];self.logIcon.tintColor=UIColor.systemRedColor;[[TMCGitAutomation shared] buildFinished:self.root success:NO];Message(self,@"无法开始构建",self.engine.console.text?:@"工具链未就绪，请先到「设置 → 工具链」检查。");return;}
+   NSString *ownerPath=self.engine.lastBuild.length?[self.engine.lastBuild stringByAppendingPathComponent:@".studio-cache-owner.json"]:nil;if(ownerPath.length)JSONWrite(@{@"project":self.root?:@"",@"projectKey":self.cacheOwner?:@"",@"snapshot":snap?:@"",@"sessionID":sessionID?:@""},ownerPath,nil);[self rememberBuildCache];if(self.busy)self.timer=[NSTimer scheduledTimerWithTimeInterval:.35 repeats:YES block:^(NSTimer *timer){[weakSelf refreshBuild];}];
   });
  });
 }

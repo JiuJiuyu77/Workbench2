@@ -25,8 +25,8 @@ extern UIViewController *TFAIClassDumpController(void);
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"工作台";
-    // dylix 卡片列表：去分隔线、行高自适应。
-    TMCCardTableStyle(self.tableView);
+    self.tableView.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    self.tableView.rowHeight = 62;
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(jitStatusChanged:)
                                                  name:@"SPJITStatusChanged"
@@ -69,27 +69,36 @@ extern UIViewController *TFAIClassDumpController(void);
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *identifier = @"WBWorkbenchCard";
-    TMCCardCell *cell = [TMCCardCell cellInTable:tableView reuseIdentifier:identifier];
+    static NSString *identifier = @"WBWorkbenchCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:identifier];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    cell.accessoryType = UITableViewCellAccessoryNone;
     cell.accessoryView = nil;
+    cell.textLabel.textColor = UIColor.labelColor;
+    cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+    cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
+    cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
 
     if (indexPath.section == 0) {
         SPToolchainInstaller *installer = [SPToolchainInstaller shared];
         if (indexPath.row == 0) {
-            [cell configureWithTitle:@"工具链"
-                              detail:(installer.isInstalled
-                                      ? [NSString stringWithFormat:@"Theos 就绪 · %@", installer.theosPath.lastPathComponent ?: @""]
-                                      : @"未就绪 · 到「设置 → 工具链」安装")
-                              symbol:@"wrench.and.screwdriver.fill"
-                                tint:(installer.isInstalled ? UIColor.systemGreenColor : UIColor.systemOrangeColor)];
+            cell.textLabel.text = @"工具链";
+            cell.detailTextLabel.text = installer.isInstalled
+                ? [NSString stringWithFormat:@"Theos 就绪 · %@", installer.theosPath.lastPathComponent ?: @""]
+                : @"未就绪 · 到「设置 → 工具链」安装";
+            cell.imageView.image = [UIImage systemImageNamed:@"wrench.and.screwdriver.fill"];
+            cell.imageView.tintColor = installer.isInstalled ? UIColor.systemGreenColor : UIColor.systemOrangeColor;
         } else if (indexPath.row == 1) {
-            [cell configureWithTitle:@"混淆强度" detail:self.obfuscationName
-                              symbol:@"shield.lefthalf.filled" tint:UIColor.systemIndigoColor];
+            cell.textLabel.text = @"混淆强度";
+            cell.detailTextLabel.text = self.obfuscationName;
+            cell.imageView.image = [UIImage systemImageNamed:@"shield.lefthalf.filled"];
+            cell.imageView.tintColor = UIColor.systemIndigoColor;
         } else {
-            [cell configureWithTitle:@"JIT 可执行内存" detail:[SPJIT shared].statusText
-                              symbol:@"bolt.fill"
-                                tint:([SPJIT shared].isEnabled ? UIColor.systemGreenColor : UIColor.systemOrangeColor)];
+            cell.textLabel.text = @"JIT 可执行内存";
+            cell.detailTextLabel.text = [SPJIT shared].statusText;
+            cell.imageView.image = [UIImage systemImageNamed:@"bolt.fill"];
+            cell.imageView.tintColor = [SPJIT shared].isEnabled ? UIColor.systemGreenColor : UIColor.systemOrangeColor;
         }
         return cell;
     }
@@ -98,9 +107,12 @@ extern UIViewController *TFAIClassDumpController(void);
     NSArray *details = @[@"编译内置样例 tweak，验证工具链", @"工具链 / 运行时 / 运行环境 / 磁盘", @"分析架构、符号、注入 dylib", @"从 ipa 导出头文件并分享", @"导入 .ips 与符号档案"];
     NSArray *icons = @[@"hammer.fill", @"checkmark.seal.fill", @"binoculars.fill", @"doc.text.magnifyingglass", @"waveform.path.ecg"];
     if (indexPath.row >= (NSInteger)titles.count) return cell;
-    [cell configureWithTitle:titles[indexPath.row] detail:details[indexPath.row]
-                      symbol:icons[indexPath.row] tint:UIColor.systemBlueColor];
+    cell.textLabel.text = titles[indexPath.row];
+    cell.detailTextLabel.text = details[indexPath.row];
+    cell.imageView.image = [UIImage systemImageNamed:icons[indexPath.row]];
+    cell.imageView.tintColor = UIColor.systemBlueColor;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     return cell;
 }
 

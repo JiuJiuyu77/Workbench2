@@ -100,7 +100,8 @@ static NSArray<NSArray<NSString *> *> *WBInstalledVersions(void) {
     [super viewDidLoad];
     self.title = @"Theos 工具链";
     self.tableView.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    TMCCardTableStyle(self.tableView);
+    self.tableView.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    self.tableView.rowHeight = 64;
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
         initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh
                              target:self action:@selector(refreshAll)];
@@ -162,36 +163,46 @@ static NSArray<NSArray<NSString *> *> *WBInstalledVersions(void) {
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *cid = @"WBTheosCard";
-    TMCCardCell *cell = [TMCCardCell cellInTable:tableView reuseIdentifier:cid];
+    static NSString *cid = @"WBTheosCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cid];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cid];
+    }
+    cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+    cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
+    cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
     cell.accessoryView = nil;
-    cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
     if (indexPath.section == 2) {
         NSArray<NSArray<NSString *> *> *versions = WBInstalledVersions();
         if (indexPath.row >= (NSInteger)versions.count) return cell;
         NSArray<NSString *> *row = versions[(NSUInteger)indexPath.row];
-        BOOL missing = [row[1] isEqualToString:@"未安装"] || [row[1] isEqualToString:@"检测中…"];
-        [cell configureWithTitle:row[0] detail:row[1] symbol:@"number.circle"
-                            tint:(missing ? UIColor.systemOrangeColor : UIColor.systemGreenColor)];
+        cell.textLabel.text = row[0];
+        cell.detailTextLabel.text = row[1];
         cell.detailTextLabel.numberOfLines = 2;
+        cell.imageView.image = [UIImage systemImageNamed:@"number.circle"];
+        BOOL detected = ![row[1] isEqualToString:@"未安装"] && ![row[1] isEqualToString:@"检测中…"];
+        cell.imageView.tintColor = detected ? UIColor.systemGreenColor : UIColor.systemOrangeColor;
         return cell;
     }
-
     if (indexPath.section == 0) {
         SPToolchainInstaller *inst = [SPToolchainInstaller shared];
-        [cell configureWithTitle:(inst.isInstalled ? @"已安装" : (inst.hasBundledToolchain ? @"待安装" : @"未安装"))
-                          detail:(inst.isInstalled ? inst.installRoot : @"点此安装内置工具链")
-                          symbol:@"wrench.and.screwdriver.fill"
-                            tint:(inst.isInstalled ? UIColor.systemGreenColor : UIColor.systemOrangeColor)];
+        cell.textLabel.text = inst.isInstalled ? @"已安装" : (inst.hasBundledToolchain ? @"待安装" : @"未安装");
+        cell.detailTextLabel.text = inst.isInstalled ? inst.installRoot : @"点此安装内置工具链";
         cell.textLabel.textColor = inst.isInstalled ? UIColor.labelColor : UIColor.systemOrangeColor;
+        cell.imageView.image = [UIImage systemImageNamed:@"wrench.and.screwdriver.fill"];
+        cell.imageView.tintColor = inst.isInstalled ? UIColor.systemGreenColor : UIColor.systemOrangeColor;
         cell.selectionStyle = inst.isInstalled ? UITableViewCellSelectionStyleNone : UITableViewCellSelectionStyleDefault;
         return cell;
     }
 
     if (indexPath.row >= (NSInteger)self.items.count) return cell;
     SPComponentInfo *info = self.items[indexPath.row];
-    [cell configureWithTitle:info.title detail:info.detail symbol:info.symbol tint:UIColor.systemBlueColor];
+    cell.textLabel.text = info.title;
+    cell.detailTextLabel.text = info.detail;
+    cell.textLabel.textColor = UIColor.labelColor;
+    cell.imageView.image = [UIImage systemImageNamed:info.symbol];
+    cell.imageView.tintColor = UIColor.systemBlueColor;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
 
     UILabel *badge = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 76, 28)];

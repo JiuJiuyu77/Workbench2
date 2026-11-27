@@ -102,7 +102,73 @@ static NSString *const kInstalledVersionKey = @"Workbench.toolchainVersion";
     }
     return [self.installRoot stringByAppendingPathComponent:@"lib"];
 }
+- (NSString *)writableRoot {
+    NSString *root = [[NSHomeDirectory() stringByAppendingPathComponent:@"Documents"]
+                      stringByAppendingPathComponent:@"Workbench/Toolchain"];
+    [NSFileManager.defaultManager createDirectoryAtPath:root
+                            withIntermediateDirectories:YES attributes:nil error:NULL];
+    return root;
+}
+
+/// 可写的 $THEOS 视图（Documents/Workbench/Toolchain/theos）。
+///
+/// 包内 theos-full 是只读的，而 Theos 构建要往 `$THEOS/sdks` 复制/写入 SDK，
+/// 直接指向包内目录会报「没有权限」。这里用「子项符号链接 + 真实 sdks 目录」
+/// 拼一个可写视图：makefiles / bin / include / lib 仍指向包内（只读即可），
+/// 只有 sdks 是真目录，下载的 SDK 直接落在这里。
+///
+/// App 重装后包路径的 UUID 会变，旧链接会失效 —— 检测到 marker 不存在就重建。
+- (NSString *)writableTheosPath {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *overlay = [self.writableRoot stringByAppendingPathComponent:@"theos-runtime"];
+    NSString *marker = [overlay stringByAppendingPathComponent:@"makefiles/common.mk"];
+    if ([fm fileExistsAtPath:marker]) return overlay;
+
+    NSString *bundled = self.bundledRoot;
+    BOOL isDir = NO;
+    if (!bundled.length || ![fm fileExistsAtPath:bundled isDirectory:&isDir] || !isDir) return nil;
+
+    NSString *source = nil;
+    for (NSString *rel in @[@"theos-full", @"theos", @"theos-root/theos"]) {
+        NSString *p = [bundled stringByAppendingPathComponent:rel];
+        if ([fm fileExistsAtPath:[p stringByAppendingPathComponent:@"makefiles/common.mk"]]) { source = p; break; }
+    }
+    if (!source.length) return nil;
+
+    [fm createDirectoryAtPath:overlay withIntermediateDirectories:YES attributes:nil error:NULL];
+    for (NSString *name in [fm contentsOfDirectoryAtPath:source error:NULL] ?: @[]) {
+        if ([name isEqualToString:@"sdks"]) continue;   // sdks 必须是真实目录
+        NSString *linkPath = [overlay stringByAppendingPathComponent:name];
+        NSString *target = [source stringByAppendingPathComponent:name];
+        NSString *existing = [fm destinationOfSymbolicLinkAtPath:linkPath error:NULL];
+        if (existing.length) {
+            if ([existing isEqualToString:target]) continue;
+            [fm removeItemAtPath:linkPath error:NULL];   // 旧包路径失效，重建
+        } else if ([fm fileExistsAtPath:linkPath]) {
+            continue;
+        }
+        [fm createSymbolicLinkAtPath:linkPath withDestinationPath:target error:NULL];
+    }
+
+    NSString *sdks = [overlay stringByAppendingPathComponent:@"sdks"];
+    [fm createDirectoryAtPath:sdks withIntermediateDirectories:YES attributes:nil error:NULL];
+    for (NSString *dir in @[[bundled stringByAppendingPathComponent:@"sdks"],
+                            [source stringByAppendingPathComponent:@"sdks"]]) {
+        for (NSString *name in [fm contentsOfDirectoryAtPath:dir error:NULL] ?: @[]) {
+            if (![name hasSuffix:@".sdk"]) continue;
+            NSString *linkPath = [sdks stringByAppendingPathComponent:name];
+            NSString *target = [dir stringByAppendingPathComponent:name];
+            if ([fm fileExistsAtPath:linkPath]) continue;   // 下载的 SDK 是真目录
+            [fm createSymbolicLinkAtPath:linkPath withDestinationPath:target error:NULL];
+        }
+    }
+    return [fm fileExistsAtPath:marker] ? overlay : nil;
+}
+
 - (NSString *)theosPath {
+    // 优先可写覆盖层（Theos 需要往 $THEOS/sdks 写）
+    NSString *writable = [self writableTheosPath];
+    if (writable.length) return writable;
     NSFileManager *fm = NSFileManager.defaultManager;
     // 顺序与判定都很关键：
     //   · theos-full 优先 —— Rein 对齐包里只有它带真实 SDK
@@ -255,6 +321,14 @@ static NSArray<NSString *> *SPComponentPathEntries(NSString *componentId) {
             addDir([croot stringByAppendingPathComponent:@"usr/bin"]);
             addDir([croot stringByAppendingPathComponent:@"bin"]);
         }
+    }
+    // 用户下载的运行时（Documents/Workbench/Toolchain/<id>）
+    NSString *writable = [self writableRoot];
+    for (NSString *cid in @[@"coretools", @"reverse", @"ollvm", @"swift-toolchain", @"ios-tools"]) {
+        NSString *croot = [writable stringByAppendingPathComponent:cid];
+        addDir([croot stringByAppendingPathComponent:@"bin"]);
+        addDir([croot stringByAppendingPathComponent:@"usr/bin"]);
+        addDir([croot stringByAppendingPathComponent:@"usr/lib/llvm-16/bin"]);
     }
     // 包内平铺布局
     NSString *bundle = [NSBundle mainBundle].bundlePath;

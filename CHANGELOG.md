@@ -1,3 +1,17 @@
+## 1.4.12 · Build317
+
+1. 回退 1.4.9 引入的「卡片 cell」：工作台 / 设置 / 执行环境 / 工具链页恢复原有（dylix 衍生）分组列表样式；设置页不再被改动。
+2. 修「执行环境」点击闪退：`+[SPTrollStoreFix canRequestTrollStoreJIT]` 未实现（.m 里叫 `canRequestJITAuthorization`），补上并按原选择器转发。
+3. 修「项目内点构建闪退」：`JSONWrite` 在路径为空时直接抛异常；构建入口现在先检查 `runProof` 是否真的启动（工具链未就绪/已有构建时给出提示而不是继续写文件）。
+4. 快速构建失败时 `quickbuild.log` 为空：子进程无输出时把 `exit=` 与 `failureHint` 写进日志。
+5. 工具链误判「未安装」+ 无法下载：
+   - 下载统一落到 `Documents/Workbench/Toolchain`（包内目录只读，写进去报无权限）；
+   - SDK 组件按清单 id 判定，解到可写 `$THEOS/sdks`，不再落到 `<Toolchain>/sdk17`；
+   - 新增可写 THEOS 覆盖层（`theos-runtime/`：makefiles/bin 等符号链接到包内，sdks 为真实目录），构建脚本优先使用它，`$THEOS/sdks` 可写。
+6. 入口去重：设置页移除「环境自检 / 逆向工作台」，统一从工作台进入。
+7. 启动资源自检改用当前真实路径（clang-16 → ollvm/bin/clang、r2 → reverse/bin/mt-macho），不再误报缺资源。
+8. 版本 1.4.12（317）。
+
 ## 1.4.11 · Build316
 
 1. 构建产物从 2 种扩展到 6 种：deb、dylib、app、ipa、bundle、可执行工具；「构建产物」页可分别开关，六种至少保留一种。
