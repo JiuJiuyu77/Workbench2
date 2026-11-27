@@ -69,7 +69,7 @@ static NSString *const kInstalledVersionKey = @"Workbench.toolchainVersion";
     // 兼容旧版：Resources/Toolchain 作为 folder reference 拷进 .app
     NSString *p = [[NSBundle mainBundle] pathForResource:@"Toolchain" ofType:nil];
     if (p) return p;
-    NSString *p = [bundle stringByAppendingPathComponent:@"Toolchain"];
+    p = [bundle stringByAppendingPathComponent:@"Toolchain"];
     if ([[NSFileManager defaultManager] fileExistsAtPath:p]) return p;
     // 有些包只带压缩包（体积更小）：交给 libarchive 展开，不依赖设备 tar/zstd。
     for (NSString *name in @[@"Toolchain.tar.gz", @"Toolchain.zip", @"Toolchain.tar.xz"]) {
