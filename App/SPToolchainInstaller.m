@@ -627,6 +627,13 @@ static BOOL SPLinkStaysInside(NSString *destination, NSString *target, NSString 
     BOOL srcIsDirectory = NO;
     BOOL srcIsArchive = [fm fileExistsAtPath:src isDirectory:&srcIsDirectory] && !srcIsDirectory;
 
+    // 包内运行时是「直接使用」的（installRoot == bundledRoot）。
+    // 这里如果继续走「先删 dst 再从 src 复制」，就会把包里的工具链删掉。
+    if (src.length && [src isEqualToString:dst]) {
+        SPLog(@"工具链已内置于 App 包，无需展开");
+        return nil;
+    }
+
     NSError *err = nil;
     [fm createDirectoryAtPath:[dst stringByDeletingLastPathComponent]
   withIntermediateDirectories:YES attributes:nil error:&err];
@@ -823,7 +830,14 @@ static BOOL SPLinkStaysInside(NSString *destination, NSString *target, NSString 
 }
 
 - (void)uninstall {
-    [NSFileManager.defaultManager removeItemAtPath:self.installRoot error:NULL];
+    NSString *root = self.installRoot;
+    NSString *bundled = self.bundledRoot;
+    // 包内工具链不能删（删了 App 就再也不能编译，且重装才能恢复）。
+    if (bundled.length && [root isEqualToString:bundled]) {
+        SPLog(@"[!] 拒绝卸载包内工具链：%@", root);
+        return;
+    }
+    [NSFileManager.defaultManager removeItemAtPath:root error:NULL];
     [[NSUserDefaults standardUserDefaults] removeObjectForKey:kInstalledVersionKey];
 }
 

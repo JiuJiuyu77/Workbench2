@@ -95,7 +95,6 @@ static void ApplyTheme(UIViewController *vc) { if(![NSStringFromClass(vc.class) 
 static UILabel *Label(NSString *t, CGFloat size, BOOL bold) { UILabel *l=[UILabel new]; l.text=t; l.font=[UIFont systemFontOfSize:size weight:bold?UIFontWeightSemibold:UIFontWeightRegular]; l.numberOfLines=0; return l; }
 static UIButton *Button(NSString *t, NSString *symbol, id target, SEL action, BOOL primary) { UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem]; UIButtonConfiguration *c=TMCButtonConfiguration(primary); c.title=t; c.image=[UIImage systemImageNamed:symbol]; c.imagePadding=10; c.cornerStyle=UIButtonConfigurationCornerStyleLarge; c.contentInsets=NSDirectionalEdgeInsetsMake(17,18,17,18); c.baseBackgroundColor=primary?Gold():UIColor.secondarySystemBackgroundColor; c.baseForegroundColor=primary?[UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *t){return t.userInterfaceStyle==UIUserInterfaceStyleDark?UIColor.blackColor:UIColor.whiteColor;}]:UIColor.labelColor; b.configuration=c; [b addTarget:target action:action forControlEvents:UIControlEventTouchUpInside]; return b; }
 static UIStackView *Stack(UIView *parent) { UIStackView *s=[UIStackView new]; s.axis=UILayoutConstraintAxisVertical;s.spacing=16;s.translatesAutoresizingMaskIntoConstraints=NO;[parent addSubview:s]; return s; }
-static UIVisualEffectView *Glass(void) {UIVisualEffect *effect=TMCGlassEffect(NO);UIVisualEffectView *v=[[UIVisualEffectView alloc] initWithEffect:effect];v.layer.cornerRadius=22;v.clipsToBounds=YES;if(!effect)v.backgroundColor=UIColor.secondarySystemBackgroundColor;return v;}
 static void RecordRecent(NSString *p) { NSMutableArray *a=[[NSUserDefaults.standardUserDefaults arrayForKey:@"StudioRecent"] mutableCopy]?:[NSMutableArray new];[a removeObject:p.lastPathComponent];[a insertObject:p.lastPathComponent atIndex:0];if(a.count>20)[a removeObjectsInRange:NSMakeRange(20,a.count-20)];[NSUserDefaults.standardUserDefaults setObject:a forKey:@"StudioRecent"]; }
 
 static void MarkSaved(NSString *root) { [[TMCGitAutomation shared] saved:root]; JSONWrite(@{@"lastSaved":@(NSDate.date.timeIntervalSince1970)},[root stringByAppendingPathComponent:@".studio-state.json"],nil); }
@@ -217,6 +216,8 @@ static void RenderBuildLog(UITextView *view, NSString *value, BOOL tail) {
 @property NSDate *previewDate;
 @property NSMutableDictionary<NSIndexPath *, UITableViewCell *> *settingCells;
 @property NSDictionary *acceptedState;
+- (NSString *)outputSummaryText;
+- (NSString *)schemeSummaryText;
 @end
 @implementation StudioBuildPreferences
 - (void)viewDidLoad{[super viewDidLoad];self.settingCells=[NSMutableDictionary new];ApplyTheme(self);self.title=self.root?@"项目构建设置":@"默认构建设置";self.previewDate=NSDate.date;self.original=self.root?Config(self.root):@{};NSDictionary *effective=TMCEffectiveBuildOptions(self.original,NSUserDefaults.standardUserDefaults);self.exportDeb=[effective[@"package"] boolValue];self.exportDylib=[effective[@"exportDylib"] boolValue];self.inheritOutput=self.root&&!self.original[@"package"]&&!self.original[@"exportDylib"];self.inheritSchemes=self.root&&!self.original[@"packageSchemes"]&&!self.original[@"packageScheme"];
@@ -225,7 +226,7 @@ static void RenderBuildLog(UITextView *view, NSString *value, BOOL tail) {
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table{return 4;}
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section{return section==0?3:section==1?(self.root?3:2):section==2?(self.root?4:3):section==3?2:2;}
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section{return WBAt(@[@"SDK 与兼容系统",@"构建产物",@"DEB 类型 · 可多选",@"自定义产物昵称 / 文件名模板"], section);}
-- (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section{if(section==0)return @"SDK 决定可使用的接口；最低系统版本决定产物运行要求。选择后自动保存。新 API 请用 @available 判断。最低支持 iOS 15.0；SDK 26 的 C++ 使用 Clang 14 兼容标准库头文件。";return section==1?@"dylib 是可单独导出的动态库；deb 是包含动态库的安装包。至少选择一项。":section==2?@"开启 deb 后启用包类型，首次开启默认无根。可同时构建多种包。":section==3?(self.root?@"留空跟随全局。预览使用本项目元数据和本次打开设置的时间。支持 {name}、{product}、{version}、{platform}（iphoneos）、{packageArch}（arm / arm64 / arm64e）、{scheme}（rootless / rootful / roothide）、{arch}（CPU）、{date}、{time}、{package}、{author}。{architecture} 保留兼容旧模板。自动添加扩展名；DEB 重名时追加编号；独立 dylib 仅导出一个（首个所选包类型）。":@"预览使用示例项目“我的插件 / MyTweak / 1.2.3”。支持 {name}、{product}、{version}、{platform}（iphoneos）、{packageArch}（arm / arm64 / arm64e）、{scheme}（rootless / rootful / roothide）、{arch}（CPU）、{date}、{time}、{package}、{author}。{architecture} 保留兼容旧模板。自动添加扩展名；DEB 重名时追加编号；独立 dylib 仅导出一个（首个所选包类型）。"):nil;}
+- (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section{if(section==0)return @"SDK 决定可使用的接口；最低系统版本决定产物运行要求。选择后自动保存。新 API 请用 @available 判断。最低支持 iOS 15.0；SDK 26 的 C++ 使用 Clang 14 兼容标准库头文件。";return section==1?[self outputSummaryText]:section==2?[self schemeSummaryText]:section==3?(self.root?@"留空跟随全局。预览使用本项目元数据和本次打开设置的时间。支持 {name}、{product}、{version}、{platform}（iphoneos）、{packageArch}（arm / arm64 / arm64e）、{scheme}（rootless / rootful / roothide）、{arch}（CPU）、{date}、{time}、{package}、{author}。{architecture} 保留兼容旧模板。自动添加扩展名；DEB 重名时追加编号；独立 dylib 仅导出一个（首个所选包类型）。":@"预览使用示例项目“我的插件 / MyTweak / 1.2.3”。支持 {name}、{product}、{version}、{platform}（iphoneos）、{packageArch}（arm / arm64 / arm64e）、{scheme}（rootless / rootful / roothide）、{arch}（CPU）、{date}、{time}、{package}、{author}。{architecture} 保留兼容旧模板。自动添加扩展名；DEB 重名时追加编号；独立 dylib 仅导出一个（首个所选包类型）。"):nil;}
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index{UITableViewCell *cached=self.settingCells[index];if(cached)return cached;UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];self.settingCells[index]=cell;cell.textLabel.font=[UIFont systemFontOfSize:13];cell.detailTextLabel.numberOfLines=0;
  if(index.section==0){NSString *key=index.row==0?@"sdkVersion":index.row==1?@"deploymentTarget":@"cxxStandard";NSDictionary *config=self.root?Config(self.root):@{};NSError *error=nil;NSDictionary *effective=TMCSDKBuildSettings(config,NSUserDefaults.standardUserDefaults,&error);NSString *value=index.row==2?TMCEffectiveBuildOptions(config,NSUserDefaults.standardUserDefaults)[key]:effective[key];BOOL inherit=self.root&&!config[key];cell.textLabel.text=[NSString stringWithFormat:@"%@：%@%@",@[@"编译 SDK",@"最低系统",@"C++ 标准"][index.row],inherit?@"跟随全局 · ":@"",value?:@"配置有误"];if(index.row==0&&value&&![self sdkReady:value])cell.textLabel.text=[cell.textLabel.text stringByAppendingString:@"（未安装）"];cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;}
  if(index.section==1){if(self.root&&index.row==0){cell.textLabel.text=@"输出跟随全局";cell.accessoryType=self.inheritOutput?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone;}else{NSUInteger row=index.row-(self.root?1:0);cell.textLabel.text=row?@"Debian 包 (.deb)":@"动态库 (.dylib)";UISwitch *toggle=[UISwitch new];toggle.on=row?self.exportDeb:self.exportDylib;toggle.tag=row;toggle.accessibilityLabel=cell.textLabel.text;[toggle addTarget:self action:@selector(outputChanged:) forControlEvents:UIControlEventValueChanged];[self installSwitch:toggle inCell:cell];cell.selectionStyle=UITableViewCellSelectionStyleNone;}}
@@ -249,6 +250,25 @@ static void RenderBuildLog(UITextView *view, NSString *value, BOOL tail) {
  toggle.translatesAutoresizingMaskIntoConstraints=NO;[cell.contentView addSubview:toggle];
  [NSLayoutConstraint activateConstraints:@[[toggle.trailingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.trailingAnchor],[toggle.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],[toggle.topAnchor constraintGreaterThanOrEqualToAnchor:cell.contentView.topAnchor constant:6],[toggle.bottomAnchor constraintLessThanOrEqualToAnchor:cell.contentView.bottomAnchor constant:-6]]];
 }
+/// 「构建产物」footer：实时反映当前开关与包类型。
+- (NSString *)outputSummaryText{
+ NSMutableArray<NSString *> *parts=[NSMutableArray array];
+ if(self.exportDeb){
+  NSArray<NSString *> *names=@[@"rootless",@"rootful",@"roothide"];NSMutableArray<NSString *> *chosen=[NSMutableArray array];
+  for(NSUInteger i=0;i<names.count&&i<self.schemeSwitches.count;i++)if(self.schemeSwitches[i].isOn)[chosen addObject:names[i]];
+  [parts addObject:[NSString stringWithFormat:@"deb × %lu（%@）",(unsigned long)(chosen.count?chosen.count:1),chosen.count?[chosen componentsJoinedByString:@"、"]:@"默认 rootless"]];
+ }
+ if(self.exportDylib)[parts addObject:@"dylib × 1"];
+ return [NSString stringWithFormat:@"dylib 是可单独导出的动态库；deb 是包含动态库的安装包。至少选择一项。当前将生成：%@。",parts.count?[parts componentsJoinedByString:@" · "]:@"无"];
+}
+/// 「DEB 类型」footer：列出已选包类型。
+- (NSString *)schemeSummaryText{
+ if(!self.exportDeb)return @"deb 当前已关闭；开启后才能选择包类型。";
+ NSArray<NSString *> *names=@[@"rootless",@"rootful",@"roothide"];NSMutableArray<NSString *> *chosen=[NSMutableArray array];
+ for(NSUInteger i=0;i<names.count&&i<self.schemeSwitches.count;i++)if(self.schemeSwitches[i].isOn)[chosen addObject:names[i]];
+ return [NSString stringWithFormat:@"开启 deb 后启用包类型，首次开启默认无根。可同时构建多种包。已选：%@。",chosen.count?[chosen componentsJoinedByString:@"、"]:@"无（将按 rootless 构建）"];
+}
+
 - (void)refreshChoices{
  for(UISwitch *toggle in self.schemeSwitches)toggle.enabled=self.exportDeb;
  for(NSIndexPath *path in self.settingCells){UITableViewCell *cell=self.settingCells[path];if(path.section<1||path.section>2)continue;
@@ -257,6 +277,7 @@ static void RenderBuildLog(UITextView *view, NSString *value, BOOL tail) {
   if(path.section==2)cell.textLabel.enabled=self.exportDeb;
  }
  [self updatePreviews];
+ [self.tableView reloadData];
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index{[table deselectRowAtIndexPath:index animated:YES];if(index.section==0){if(index.row==2)[self editCxxStandard];else [self editSDKSetting:index.row];return;}if(index.section==3)return;if(index.section==1){if(self.root&&index.row==0){NSDictionary *global=TMCEffectiveBuildOptions(@{},NSUserDefaults.standardUserDefaults);self.exportDeb=[global[@"package"] boolValue];self.exportDylib=[global[@"exportDylib"] boolValue];self.inheritOutput=YES;NSArray *schemes=global[@"packageSchemes"];for(NSUInteger i=0;i<3;i++)self.schemeSwitches[i].on=self.exportDeb&&[schemes containsObject:@[@"rootless",@"rootful",@"roothide"][i]];}else{NSUInteger row=index.row-(self.root?1:0);self.inheritOutput=NO;if(row){self.exportDeb=!self.exportDeb;self.inheritSchemes=NO;for(NSUInteger i=0;i<3;i++)self.schemeSwitches[i].on=self.exportDeb&&i==0;}else self.exportDylib=!self.exportDylib;}[self refreshChoices];}
  if(self.root&&index.section==2&&index.row==0&&self.exportDeb){self.inheritSchemes=YES;NSArray *defaults=TMCEffectiveBuildOptions(@{},NSUserDefaults.standardUserDefaults)[@"packageSchemes"];for(NSUInteger i=0;i<3;i++)self.schemeSwitches[i].on=[defaults containsObject:@[@"rootless",@"rootful",@"roothide"][i]];[self refreshChoices];}[self saveOrRestore];}
@@ -284,8 +305,30 @@ static void RenderBuildLog(UITextView *view, NSString *value, BOOL tail) {
 }
 - (void)editCxxStandard{NSString *key=@"cxxStandard";UIAlertController *sheet=[UIAlertController alertControllerWithTitle:@"C++ 标准" message:@"GNU 方言支持 typeof 等扩展；项目中的显式 Makefile -std 设置优先导入。" preferredStyle:UIAlertControllerStyleActionSheet];if(self.root)[sheet addAction:[UIAlertAction actionWithTitle:@"跟随全局（gnu++17）" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){[self saveSDKValue:nil key:key];}]];for(NSString *standard in @[@"c++14",@"gnu++14",@"c++17",@"gnu++17",@"c++20",@"gnu++20"])[sheet addAction:[UIAlertAction actionWithTitle:standard style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){[self saveSDKValue:standard key:key];}]];[sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];sheet.popoverPresentationController.sourceView=self.tableView;sheet.popoverPresentationController.sourceRect=[self.tableView rectForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:0]];[self presentViewController:sheet animated:YES completion:nil];}
 - (void)editPattern:(UIControl *)sender{NSIndexPath *index=[NSIndexPath indexPathForRow:sender.tag inSection:3];StudioValueEditor *editor=[StudioValueEditor new];editor.title=index.row?@"动态库文件名":@"DEB 文件名";editor.value=self.patterns[index.row].text;editor.helpText=self.root?@"留空跟随全局。支持 {name}、{version}、{platform}、{packageArch}、{scheme} 等模板参数；点完成后自动保存。":@"留空恢复默认模板。支持 {name}、{version}、{platform}、{packageArch}、{scheme} 等参数。点完成后自动保存并更新预览。";__weak typeof(self) weak=self;editor.completion=^(NSString *value){weak.patterns[index.row].text=[value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];[weak.settingCells removeObjectForKey:index];[weak updatePreviews];[weak saveOrRestore];[weak.tableView reloadRowsAtIndexPaths:@[index] withRowAnimation:UITableViewRowAnimationNone];};UINavigationController *nav=[[TMCNavigationController alloc] initWithRootViewController:editor];nav.modalPresentationStyle=UIModalPresentationPageSheet;nav.sheetPresentationController.detents=@[UISheetPresentationControllerDetent.mediumDetent,UISheetPresentationControllerDetent.largeDetent];nav.sheetPresentationController.prefersGrabberVisible=YES;[self presentViewController:nav animated:YES completion:nil];}
-- (void)outputChanged:(UISwitch *)toggle{NSDictionary *previous=[self preferenceState];self.inheritOutput=NO;if(toggle.tag){self.exportDeb=toggle.on;self.inheritSchemes=NO;for(NSUInteger i=0;i<3;i++)self.schemeSwitches[i].on=self.exportDeb&&i==0;}else self.exportDylib=toggle.on;[self refreshChoices];if(![self persistSettings])[self restoreState:previous];else self.acceptedState=[self preferenceState];}
-- (void)schemeChanged{self.inheritSchemes=NO;[self refreshChoices];[self saveOrRestore];}
+- (void)outputChanged:(UISwitch *)toggle{
+ NSDictionary *previous=[self preferenceState];self.inheritOutput=NO;
+ if(toggle.tag){self.exportDeb=toggle.on;self.inheritSchemes=NO;for(NSUInteger i=0;i<3;i++)self.schemeSwitches[i].on=self.exportDeb&&i==0;}else self.exportDylib=toggle.on;
+ // 逻辑约束：dylib 与 deb 至少保留一种，否则构建没有产物。
+ if(!self.exportDeb&&!self.exportDylib){
+  toggle.on=!toggle.on;
+  if(toggle.tag)self.exportDeb=YES;else self.exportDylib=YES;
+  [self refreshChoices];
+  Message(self,@"至少保留一种产物",@"dylib 与 deb 不能同时关闭。需要停用其中一种时，请先启用另一种。");
+  return;
+ }
+ [self refreshChoices];
+ if(![self persistSettings])[self restoreState:previous];else self.acceptedState=[self preferenceState];
+}
+- (void)schemeChanged{
+ self.inheritSchemes=NO;
+ // 逻辑约束：deb 开启时包类型不能全关，否则不会产出 deb。
+ if(self.exportDeb){
+  BOOL any=NO;for(UISwitch *sw in self.schemeSwitches)if(sw.isOn)any=YES;
+  if(!any){self.schemeSwitches.firstObject.on=YES;Message(self,@"至少选择一种包类型",@"deb 已开启，包类型不能全部关闭；已恢复 rootless。");}
+ }
+ [self refreshChoices];
+ [self saveOrRestore];
+}
 - (void)updatePreviews{NSMutableDictionary *sample=[TMCOutputContext(self.root?:Docs(),self.root?(Config(self.root)[@"productName"]?:@"MyTweak"):@"MyTweak",self.previewDate) mutableCopy];if(!self.root){[sample addEntriesFromDictionary:@{@"name":@"我的插件",@"product":@"MyTweak",@"version":@"1.2.3",@"arch":@"arm64",@"package":@"com.example.mytweak",@"author":@"Developer"}];}NSMutableArray *schemes=[NSMutableArray new];for(NSUInteger i=0;i<3;i++)if(self.schemeSwitches[i].on)[schemes addObject:@[@"rootless",@"rootful",@"roothide"][i]];if(!schemes.count)[schemes addObject:@"rootless"];NSDictionary *global=TMCEffectiveBuildOptions(@{},NSUserDefaults.standardUserDefaults);for(NSUInteger i=0;i<2;i++){NSString *ext=i?@"dylib":@"deb",*text=self.patterns[i].text;NSString *pattern=text.length?text:global[[@"outputPattern-" stringByAppendingString:ext]];NSMutableArray *names=[NSMutableArray new];NSError *error=nil;for(NSString *scheme in schemes){NSString *name=i?TMCOutputFilename(pattern,ext,TMCNamingContextForScheme(sample,schemes.firstObject),&error):TMCVariantOutputFilename(pattern,ext,sample,self.exportDeb?schemes:@[@"rootless"],self.exportDeb?scheme:@"rootless",&error);if(!name)break;[names addObject:name];if(i||!self.exportDeb)break;}BOOL enabled=i?self.exportDylib:self.exportDeb;self.previews[i].text=error&&enabled?error.localizedDescription:enabled?[@"预览：\n" stringByAppendingString:[names componentsJoinedByString:@"\n"]]:@"当前未开启此产物";self.previews[i].textColor=error&&enabled?UIColor.systemRedColor:enabled?Gold():UIColor.secondaryLabelColor;}for(NSIndexPath *path in self.settingCells)if(path.section==3){UITableViewCell *cell=self.settingCells[path];NSString *value=self.patterns[path.row].text.length?self.patterns[path.row].text:self.patterns[path.row].placeholder;for(UIView *view in cell.contentView.subviews)if([view isKindOfClass:UIStackView.class])for(UIView *entry in ((UIStackView *)view).arrangedSubviews)if([entry isKindOfClass:UIControl.class])entry.accessibilityValue=value;}
  if(self.tableView.window)[UIView performWithoutAnimation:^{[self.tableView beginUpdates];[self.tableView endUpdates];}];}
 - (BOOL)persistSettings{if(self.root){NSString *invalid=ValidateProject(self.root);if(invalid){Message(self,@"请先修正工程配置",invalid);return NO;}}TMCGitLease *lease __attribute__((objc_precise_lifetime))=[TMCGitLease tryWrite];if(!lease){Message(self,@"Git 正在处理",@"请稍后保存构建设置。");return NO;}if(!self.exportDylib&&!self.exportDeb){Message(self,@"选择构建产物",@"请至少开启 dylib 或 deb。");return NO;}NSMutableArray *schemes=[NSMutableArray new];for(NSUInteger i=0;i<3;i++)if(self.schemeSwitches[i].on)[schemes addObject:@[@"rootless",@"rootful",@"roothide"][i]];if(self.exportDeb&&!schemes.count){Message(self,@"选择包类型",@"请至少选择一种包类型。");return NO;}if(!schemes.count)[schemes addObject:@"rootless"];NSDictionary *sample=TMCOutputContext(self.root?:Docs(),@"MyTweak",NSDate.date);for(NSUInteger i=0;i<2;i++){NSString *text=self.patterns[i].text;if(text.length){NSError *error=nil;if(!TMCOutputFilename(text,i?@"dylib":@"deb",sample,&error)){Message(self,@"文件名格式有误",error.localizedDescription);return NO;}}}

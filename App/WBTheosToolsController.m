@@ -288,12 +288,10 @@ static NSArray<NSArray<NSString *> *> *WBInstalledVersions(void) {
         message:[NSString stringWithFormat:@"确定移除「%@」？删除后需要重新下载。", info.title]
         preferredStyle:UIAlertControllerStyleActionSheet];
     [a addAction:[UIAlertAction actionWithTitle:@"移除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *act) {
-        // 下载器没有提供卸载接口，这里只提示，避免误删
-        UIAlertController *b = [UIAlertController alertControllerWithTitle:@"暂不支持移除"
-            message:@"当前版本只支持安装与覆盖。需要彻底清理请卸载 App。"
-            preferredStyle:UIAlertControllerStyleAlert];
-        [b addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleDefault handler:nil]];
-        [self presentViewController:b animated:YES completion:nil];
+        // downloader 有 remove:，之前 UI 却说「暂不支持」，两边不一致。
+        // SDK 只会删自己的 sdks/iPhoneOS*.sdk，不会动工具链根目录。
+        [[SPToolchainDownloader shared] remove:info.component];
+        [self reload];
     }]];
     [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     a.popoverPresentationController.sourceView = self.view;

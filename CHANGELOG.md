@@ -1,3 +1,12 @@
+## 1.4.10 · Build315
+
+1. 死代码清理：删除无调用方的 `SPHeaderExport`（头文件导出已由 `TFAIClassDump` 提供）与 `SPDiagnostics`（无入口的风险诊断模块），删除未使用的 `Glass()`；`SPSessionReapAllChildren()` 接回 `applicationWillTerminate:`。
+2. 逻辑修复：包内工具链禁止「先删再复制 / 卸载」（installRoot == bundledRoot 时直接跳过）；SDK 组件移除只删对应 `sdks/iPhoneOS*.sdk`，不再删整个工具链；工具链页「移除」按钮改为真正执行。
+3. 构建产物完善：dylib / deb 不能同时关闭；deb 包类型不能全部关闭；footer 实时显示「当前将生成 deb × N · dylib × 1」与已选包类型。
+4. 新增 `scripts/verify_toolchain.py`：直接读取 ipa 中央目录校验工具链（关键文件、Mach-O、执行位、SDK、makefiles）。对 1.4.9 发布包实测 PASS（38,717 条 Toolchain 条目，3 个 SDK，83 个 .mk）。
+5. 新增 `docs/AUDIT-1.4.10.md`（死代码 / 逻辑漏洞 / 代码审计 / 工具链结果）。
+6. 版本 1.4.10（315）。
+
 ## 1.4.9 · Build314
 
 1. 主线程同步 Shell 全部移除：Theos 工具链页的版本探测改为后台队列 + 缓存（不再出现「内部错误：同步 Shell 不能在主线程调用」）；JIT 探测改串行后台队列，完成后通知刷新；工作台 / 执行环境进入即探测。

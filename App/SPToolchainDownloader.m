@@ -367,7 +367,18 @@ totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite {
 }
 
 - (void)remove:(SPComponent)component {
-    [[NSFileManager defaultManager] removeItemAtPath:[self directoryFor:component] error:NULL];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *cid = [self identifierForComponent:component];
+    if ([cid hasPrefix:@"sdk"]) {
+        // SDK 解在 installRoot/sdks/ 下，directoryFor 返回的是 installRoot 本身，
+        // 直接删会把整个工具链干掉。这里只删目标 SDK 目录。
+        NSString *name = [cid isEqualToString:@"sdk26"] ? @"iPhoneOS26.5.sdk" : @"iPhoneOS17.0.sdk";
+        NSString *dir = [[SPToolchainInstaller shared].installRoot
+                         stringByAppendingPathComponent:[@"sdks" stringByAppendingPathComponent:name]];
+        [fm removeItemAtPath:dir error:NULL];
+    } else {
+        [fm removeItemAtPath:[self directoryFor:component] error:NULL];
+    }
     [[SPToolchain shared] rescan];
 }
 
