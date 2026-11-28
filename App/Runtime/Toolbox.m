@@ -262,7 +262,7 @@ static BOOL WBInsideRoot(NSString *root, NSString *candidate) {
         return identifier ? @{@"commit": identifier} : nil;
     }
     if ([name isEqualToString:@"git_upload"] || [name isEqualToString:@"git_push"]) {
-        NSDictionary *result = [service pushArchive:nil foreground:YES];
+        NSDictionary *result = [service pushArchive:@"" foreground:YES];
         return result ?: @{};
     }
     if ([name isEqualToString:@"git_download_updates"] || [name isEqualToString:@"git_pull"]) {
