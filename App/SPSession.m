@@ -560,7 +560,24 @@ static NSDictionary<NSString *, NSString *> *SPSanitizeEnvironment(NSDictionary 
         }
     }
 
-    return [self launch:sh args:@[@"-c", body]];
+    NSString *tmpScript = [NSTemporaryDirectory() stringByAppendingPathComponent:
+                           [NSString stringWithFormat:@"wb-exec-%@.sh", [SPUtil timestampSlug]]];
+    NSError *writeErr = nil;
+    [body writeToFile:tmpScript atomically:YES encoding:NSUTF8StringEncoding error:&writeErr];
+    if (writeErr) {
+        SPLog(@"[!] 写入临时脚本失败：%@，回退 -c 传参", writeErr.localizedDescription);
+        return [self launch:sh args:@[@"-c", body]];
+    }
+
+    chmod(tmpScript.fileSystemRepresentation, 0755);
+    int pid = [self launch:sh args:@[tmpScript]];
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
+                   dispatch_get_global_queue(QOS_CLASS_BACKGROUND, 0), ^{
+        [[NSFileManager defaultManager] removeItemAtPath:tmpScript error:NULL];
+    });
+
+    return pid;
 }
 
 - (int)runExecutable:(NSString *)exe arguments:(NSArray<NSString *> *)args {
