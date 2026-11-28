@@ -51,7 +51,14 @@ BOOL TMCExtractArchive(NSURL *input, NSURL *destination, NSString *password,
                        NSProgress *cancellation, TMCArchiveProgress progress, NSError **outError) {
     NSError *failure=nil;
     NSFileManager *fm=NSFileManager.defaultManager;
-    if([fm fileExistsAtPath:destination.path])return Fail(outError,TMCArchiveInvalid,@"解压目标目录已存在");
+    // 允许覆盖原有文件：若目标已存在，直接安全清理旧目录再解压
+    if ([fm fileExistsAtPath:destination.path]) {
+        NSError *rmErr = nil;
+        [fm removeItemAtURL:destination error:&rmErr];
+        if (rmErr) {
+            return Fail(outError, TMCArchiveInvalid, [NSString stringWithFormat:@"覆盖旧目录失败：%@", rmErr.localizedDescription]);
+        }
+    }
     if(![fm createDirectoryAtURL:destination withIntermediateDirectories:YES attributes:nil error:outError])return NO;
     struct archive *reader=archive_read_new();
     // Only in-process filters: never let libarchive fall back to a child process.

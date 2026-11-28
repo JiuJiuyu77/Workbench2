@@ -72,7 +72,7 @@ static NSString *ValidateProjectOptions(NSString *root, BOOL checkSources) {
     if(checkSources)for (NSString *f in c[@"sources"]) {
         NSString *path=Child(root,f); BOOL dir=NO;
         if (!path || ![NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&dir] || dir) return [@"源码路径不存在或超出工程：" stringByAppendingString:f];
-        if (![@[@"x",@"m",@"mm",@"xm",@"c",@"cpp"] containsObject:f.pathExtension.lowercaseString]) return [@"尚未支持的源码类型：" stringByAppendingString:f];
+        if (![SPUtil isSourceExtension:f.pathExtension]) return [@"尚未支持的源码类型：" stringByAppendingString:f];
     }
     return nil;
 }
